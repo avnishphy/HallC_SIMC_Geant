@@ -1,13 +1,5 @@
 # Build directories
-build/
-*/build/
 HallC_NPS/DVCS_evt_gen/DVCS/build
-
-# CMake
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
 
 # Geant4 / ROOT generated
 *.root

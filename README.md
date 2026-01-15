@@ -1,14 +1,17 @@
-# Exclusive/SIDIS pi0 Geant4 + SIMC Reconstruction Framework
+# Exclusive / SIDIS π⁰ Geant4 + SIMC Reconstruction Framework
 
-This repository contains a Geant4-based detector simulation and reconstruction chain for exclusive and SIDIS pi0 reactions in Hall C. It interfaces directly with SIMC ROOT output, propagates generated particles through a realistic calorimeter and spectrometer geometry, performs clustering, and writes analysis-ready ntuples.
+This repository contains a Geant4-based detector simulation and reconstruction framework for exclusive and SIDIS π⁰ reactions in Hall C. It interfaces directly with SIMC ROOT output, propagates generated particles through a realistic NPS calorimeter and spectrometer geometry, performs clustering and trigger emulation, and writes analysis-ready ROOT ntuples.
 
-The framework supports:
+The framework provides:
 
 * SIMC → Geant4 event transport
 * Full electromagnetic shower simulation in the NPS calorimeter
-* Cluster reconstruction and trigger emulation
-* Event-by-event association of primary photons with deposited energy
+* Cluster reconstruction and trigger response using NPS_SOFT
+* Event-by-event truth association of primary photons with deposited energy
 * Automatic kinematic configuration via the Hall C KinC list
+
+This work builds upon the earlier simulation framework by Hao Huang:
+[https://github.com/hhuang-hep/NPS2023_Simulation](https://github.com/hhuang-hep/NPS2023_Simulation)
 
 ---
 
@@ -27,7 +30,7 @@ SIMC must also be built and available (see below).
 
 ## 2. External Dependencies
 
-### NPS_SOFT
+### NPS_SOFT (Clustering and Trigger Libraries)
 
 ```bash
 cd NPS_SOFT
@@ -36,7 +39,7 @@ make biglib
 
 This builds the calorimeter clustering, trigger, and reconstruction libraries.
 
-### HallC_NPS Geant4 DVCS
+### HallC_NPS Geant4 (DVCS Application)
 
 ```bash
 cd HallC_NPS/DVCS_evt_gen/DVCS
@@ -48,17 +51,17 @@ make
 
 ### SIMC
 
-The official SIMC repository is:
+Official repository:
 
 [https://github.com/JeffersonLab/simc_gfortran](https://github.com/JeffersonLab/simc_gfortran)
 
-For Geant4 integration, modified versions of several SIMC interface files are required. A validated working version is available on ifarm at:
+For Geant4 integration, several interface files are modified. A validated working version is available on ifarm:
 
 ```
 /u/group/nps/singhav/simc_gfortran_updated
 ```
 
-Either clone that directory or apply the same modifications to your local SIMC build.
+You may either clone this directory or apply the same modifications to your local SIMC build.
 
 ---
 
@@ -80,7 +83,7 @@ Arguments:
 * `nEvents`   : Number of events to process (≤ number in SIMC file)
 * `out.root`  : Output ROOT file (default: `geant_output.root`)
 * `--batch`   : Batch mode (recommended for production)
-* `--vis`     : Geant4 visualization (currently reliable for 1 event only)
+* `--vis`     : Geant4 visualization (currently reliable for single-event runs)
 
 ---
 
@@ -102,23 +105,21 @@ Run   | Kinematics
 ...
 ```
 
-You are prompted to enter a run number. The corresponding kinematic configuration is automatically loaded and applied to:
+You are prompted to enter a run number. The corresponding configuration is automatically applied to:
 
 * Beam energy
 * HMS angle and momentum
-* Calorimeter distance and angle
+* Calorimeter distance and orientation
 * Target properties
 * Magnetic field settings
 
-This ensures full consistency between SIMC and Geant4 geometry.
+This ensures full consistency between SIMC generation and Geant4 geometry.
 
 ---
 
 ## 5. Output Structure
 
-The output ROOT file contains all original SIMC branches plus Geant4 and reconstruction-level information.
-
-New branches include:
+The output ROOT file contains all original SIMC branches plus Geant4 truth and reconstruction information.
 
 ### Event-level
 
@@ -128,10 +129,10 @@ New branches include:
 2. `edep[1080]`
    Energy deposited per calorimeter block (MeV, after 4% compensation)
 
-### Primary photon truth (from Geant4 tracking)
+### Primary photon truth
 
 3. `phot1_hit`
-   Flag: primary photon reached calorimeter
+   Flag indicating whether the primary photon reached the calorimeter
 
 4. `phot1_v{x,y,z}`
    Generation vertex (SIMC)
@@ -140,10 +141,10 @@ New branches include:
    True impact point on calorimeter front face (Geant4)
 
 6. `phot1_Ecal`
-   Total energy deposited in calorimeter by this photon and all its secondaries (GeV)
+   Total energy deposited by the primary photon shower and all secondaries (GeV)
 
 7. `phot1_clustSize`
-   Size of associated reconstructed cluster
+   Size of the reconstructed cluster associated with this photon
 
 ### Cluster reconstruction (NPS_SOFT)
 
@@ -157,17 +158,29 @@ New branches include:
     Cluster positions on calorimeter face (cm)
 
 11. `clust_Size[]`
-    Number of blocks in each cluster
+    Number of blocks per cluster
 
-Important distinction:
+**Important distinction**
 
-* `phot1_Ecal` is *truth-matched* energy from the primary photon shower only.
-* `clust_E[i]` is *reconstructed* cluster energy using calorimeter blocks and trigger logic, with no knowledge of particle ancestry.
-  Therefore they may differ due to overlaps, pileup, and secondary contamination.
+* `phot1_Ecal` is truth-matched energy from the primary photon shower only.
+* `clust_E[i]` is reconstructed cluster energy using calorimeter blocks and trigger logic, with no knowledge of particle ancestry.
+  Differences arise due to overlaps, pileup, leakage, and secondary contamination.
 
 ---
 
-## 6. Visualization
+## 6. Coordinate System
+
+The simulation uses the standard Geant4 right-handed coordinate system:
+
+* z: downstream (beam direction)
+* x: beam left
+* y: upward
+
+Care must be taken when comparing with Hall C data coordinate conventions.
+
+---
+
+## 7. Visualization
 
 Single-event visualization:
 
@@ -175,40 +188,20 @@ Single-event visualization:
 ./DVCS simc.root h10 1 vis.root --vis
 ```
 
-This launches the Geant4 OpenGL viewer and shows:
+Displays:
 
 * NPS crystal geometry
-* Shower development
+* Electromagnetic shower development
 * Primary photon trajectories
-* Energy deposition
-
----
-
-## 7. Repository Policy
-
-This repository tracks:
-
-* Geant4 source
-* NPS reconstruction source
-* HallC geometry
-* SIMC interface code
-* Analysis macros and scripts
-
-It does **not** track:
-
-* Build directories
-* ROOT output
-* Static libraries
-* Object files
-
-These are excluded via `.gitignore`.
+* Energy deposition patterns
 
 ---
 
 ## 8. Contact
 
-Avnish Singh
+**Avnish Singh**
 The Catholic University of America
 Jefferson Lab Hall C / NPS
+
 [singhav@cua.edu](mailto:singhav@cua.edu)
 [singhav@jlab.org](mailto:singhav@jlab.org)
