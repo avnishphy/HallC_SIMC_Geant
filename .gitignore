@@ -1,0 +1,30 @@
+# Build directories
+build/
+*/build/
+HallC_NPS/DVCS_evt_gen/DVCS/build
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Geant4 / ROOT generated
+*.root
+*.log
+*.mac~
+*.so
+*.a
+*.o
+*.d
+
+# NPS_SOFT biglib products
+NPS_SOFT/lib/
+NPS_SOFT/obj/
+NPS_SOFT/*.a
+NPS_SOFT/*.so
+
+# Editor junk
+*~
+.#*
+.DS_Store
