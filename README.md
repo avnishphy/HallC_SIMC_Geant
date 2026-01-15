@@ -1,102 +1,214 @@
-# DVCS Geant4 + SIMC Reconstruction Project
+# Exclusive/SIDIS pi0 Geant4 + SIMC Reconstruction Framework
 
-This repository contains a Geant4-based simulation and reconstruction pipeline that reads SIMC output (ROOT) and runs a calorimeter + detector simulation, including clustering and ntuple production.
+This repository contains a Geant4-based detector simulation and reconstruction chain for exclusive and SIDIS pi0 reactions in Hall C. It interfaces directly with SIMC ROOT output, propagates generated particles through a realistic calorimeter and spectrometer geometry, performs clustering, and writes analysis-ready ntuples.
 
-This README explains how to build, how to run, and how to use the new KinC list printing / run-selection feature.
+The framework supports:
+
+* SIMC → Geant4 event transport
+* Full electromagnetic shower simulation in the NPS calorimeter
+* Cluster reconstruction and trigger emulation
+* Event-by-event association of primary photons with deposited energy
+* Automatic kinematic configuration via the Hall C KinC list
 
 ---
 
-## Requirements
-
-- C++ compiler with C++11 (or newer) support (g++ / clang++)
-- CMake (>= 3.10 recommended)
-- Geant4 (compiled with the same compiler; environment variables sourced)
-- ROOT (for reading SIMC files and writing ntuples)
-- CLHEP (usually included with Geant4)
-- `make` or `ninja` (or use `cmake --build`)
-
-Make sure your environment is configured for Geant4 and ROOT. Example (bash):
+## 1. Environment Setup (ifarm / JLab)
 
 ```bash
 module purge
 module use /group/halla/modulefiles
 module load geant4/11.2.1
 module load root/6.30.04
-````
+```
+
+SIMC must also be built and available (see below).
 
 ---
 
-## Build
+## 2. External Dependencies
 
-From the project root:
+### NPS_SOFT
 
 ```bash
-mkdir -p build
-cd build
-cmake ..                 # add -DGeant4_DIR=/path/to/geant4/cmake if necessary
-make -j4                 # or: cmake --build . -- -j4
+cd NPS_SOFT
+make biglib
 ```
 
-If `HistoManager.cc` or other new sources were added, ensure they are included in `CMakeLists.txt` so they compile and link into the `DVCS` executable.
+This builds the calorimeter clustering, trigger, and reconstruction libraries.
+
+### HallC_NPS Geant4 DVCS
+
+```bash
+cd HallC_NPS/DVCS_evt_gen/DVCS
+mkdir -p build
+cd build
+cmake -DNPS_SOFT_ROOT=../../../NPS_SOFT ..
+make
+```
+
+### SIMC
+
+The official SIMC repository is:
+
+[https://github.com/JeffersonLab/simc_gfortran](https://github.com/JeffersonLab/simc_gfortran)
+
+For Geant4 integration, modified versions of several SIMC interface files are required. A validated working version is available on ifarm at:
+
+```
+/u/group/nps/singhav/simc_gfortran_updated
+```
+
+Either clone that directory or apply the same modifications to your local SIMC build.
 
 ---
 
-## Run
+## 3. Running the Simulation
 
-Run the built executable (from the `build` directory or with full path):
+First generate a SIMC ROOT file for the desired kinematics.
 
-```
+Then run Geant4 from:
+
+```bash
+cd HallC_NPS/DVCS_evt_gen/DVCS/build
 ./DVCS <simc.root> [tree] [nEvents] [out.root] [--batch] [--vis]
 ```
 
-Examples:
+Arguments:
 
-* Interactive run (prompts for SIMC file and prints kinclist):
-
-  ```bash
-  ./DVCS
-  ```
-
-  The program will print a concise KinC list (run number + kinematic text) using the KinC file path `../../../../KinC_list.txt` (relative to where the program runs). You can pick a run number and the program will automatically apply that run's configuration.
-
-* Provide SIMC file and options on the command line:
-
-  ```bash
-  ./DVCS /path/to/simc.root h10 1000 my_output.root --batch
-  ```
-
-* Visual mode (requires X and Geant4 visualization support):
-
-  ```bash
-  ./DVCS /path/to/simc.root h10 100 --vis
-  ```
+* `simc.root` : SIMC output file
+* `tree`      : Tree name (default: `h10`)
+* `nEvents`   : Number of events to process (≤ number in SIMC file)
+* `out.root`  : Output ROOT file (default: `geant_output.root`)
+* `--batch`   : Batch mode (recommended for production)
+* `--vis`     : Geant4 visualization (currently reliable for 1 event only)
 
 ---
 
-## New feature: KinC list printing & run selection
+## 4. KinC List and Run Selection
 
-At startup the program prints a compact view of `KinC_list.txt` (`../../../../KinC_list.txt` by default). Each printed line shows:
+At startup, the program reads the Hall C kinematic list:
 
 ```
-RunNumber   <rest of line (kinematic description)>
+../../../../KinC_list.txt
 ```
 
-This makes it easier to choose which run to simulate. Enter the chosen `runNumber` at the prompt.
+It prints a concise table:
 
-If your KinC list has a different structure, or you want to provide a custom path, you can edit `main.cc` (the `kinclist_path` constant) or pass environment variables / add a CLI option — I can help add that.
+```
+Run   | Kinematics
+----------------------------
+3241  | Ebeam=10.6 GeV, Q2=2.5, xB=0.36, ...
+3242  | Ebeam=10.6 GeV, Q2=3.0, xB=0.42, ...
+...
+```
+
+You are prompted to enter a run number. The corresponding kinematic configuration is automatically loaded and applied to:
+
+* Beam energy
+* HMS angle and momentum
+* Calorimeter distance and angle
+* Target properties
+* Magnetic field settings
+
+This ensures full consistency between SIMC and Geant4 geometry.
 
 ---
 
-## Output
+## 5. Output Structure
 
-* The program produces a ROOT output file (default `geant_output.root`) containing:
+The output ROOT file contains all original SIMC branches plus Geant4 and reconstruction-level information.
 
-  * per-crystal energy deposition (`edep[...]`)
-  * photon & cluster information
-  * the new vector branches for clusters: `nClusters`, `clust_E`, `clust_X`, `clust_Y`, `clust_Size`
-  * mirrored SIMC branches if a SIMC ROOT path and tree are supplied
+New branches include:
+
+### Event-level
+
+1. `evtNb`
+   Event number
+
+2. `edep[1080]`
+   Energy deposited per calorimeter block (MeV, after 4% compensation)
+
+### Primary photon truth (from Geant4 tracking)
+
+3. `phot1_hit`
+   Flag: primary photon reached calorimeter
+
+4. `phot1_v{x,y,z}`
+   Generation vertex (SIMC)
+
+5. `phot1_hit_{x,y,z}`
+   True impact point on calorimeter front face (Geant4)
+
+6. `phot1_Ecal`
+   Total energy deposited in calorimeter by this photon and all its secondaries (GeV)
+
+7. `phot1_clustSize`
+   Size of associated reconstructed cluster
+
+### Cluster reconstruction (NPS_SOFT)
+
+8. `nClusters`
+   Number of reconstructed clusters
+
+9. `clust_E[]`
+   Cluster energies (GeV)
+
+10. `clust_X[], clust_Y[]`
+    Cluster positions on calorimeter face (cm)
+
+11. `clust_Size[]`
+    Number of blocks in each cluster
+
+Important distinction:
+
+* `phot1_Ecal` is *truth-matched* energy from the primary photon shower only.
+* `clust_E[i]` is *reconstructed* cluster energy using calorimeter blocks and trigger logic, with no knowledge of particle ancestry.
+  Therefore they may differ due to overlaps, pileup, and secondary contamination.
+
 ---
 
-## Contact / Next steps
-Avnish Singh; singhav@cua.edu, singhav@jlab.org
+## 6. Visualization
+
+Single-event visualization:
+
+```bash
+./DVCS simc.root h10 1 vis.root --vis
 ```
+
+This launches the Geant4 OpenGL viewer and shows:
+
+* NPS crystal geometry
+* Shower development
+* Primary photon trajectories
+* Energy deposition
+
+---
+
+## 7. Repository Policy
+
+This repository tracks:
+
+* Geant4 source
+* NPS reconstruction source
+* HallC geometry
+* SIMC interface code
+* Analysis macros and scripts
+
+It does **not** track:
+
+* Build directories
+* ROOT output
+* Static libraries
+* Object files
+
+These are excluded via `.gitignore`.
+
+---
+
+## 8. Contact
+
+Avnish Singh
+The Catholic University of America
+Jefferson Lab Hall C / NPS
+[singhav@cua.edu](mailto:singhav@cua.edu)
+[singhav@jlab.org](mailto:singhav@jlab.org)
