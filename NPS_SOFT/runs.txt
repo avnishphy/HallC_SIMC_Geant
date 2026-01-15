@@ -1,0 +1,12 @@
+Kin1-high: 9380
+Kin1-low : 9024
+Kin2-high: 9279
+Kin2-low : 8463
+Kin3-high: 9148
+Kin3-low : 8290
+Kin4-high: 9677
+Kin4-low : 8502
+
+Optics :   9121
+
+Efficiency:9120

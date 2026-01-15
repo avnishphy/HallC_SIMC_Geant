@@ -1,0 +1,40 @@
+NEW Makefile 
+Author: G.Gavalian
+
+INTRODUCTION
+-----------------
+
+A new Scheme for a makefile is introduced.
+The files that were added to the directory all have extension *.alt
+(alternative). To see the newly added files do :
+
+ls -l *.alt
+
+Here is the list of the added files:
+README.alt       - this is what you're reading right now.
+Makefile.alt     - the makefile
+rootlogon.C.alt  - alternative rootlogon file (change the name to rootlogon.C to load automaticaly)
+
+The new Makefile creates only 6 shared libraries, namely:
+
+libTARSlib.so  - for ARS releated classes
+libTWrappes.so - The wrapper classes
+libTCalolib.so - the calorimeter related classes
+libTPAlib.so   - Proton Array releated classes
+libTDVCSlib.so - DVCS Classes
+libTHalib.so   - all the classes that begin with THa*
+
+
+COMPILING
+-----------------
+
+First step to prepare for compilation is to define DVCS_DIR enviromental variable. At the compile time separate directories will be created inside the $DVCS_DIR for object files and libraries.
+Once you have DVCS_DIR set up, you can just simply type (while in the directory dvcs/soft):
+
+make -f Makefile.alt lib
+
+Then copy the rootlogon.C.alt file into your working directory, rename it to rootlogon.C and type:
+
+$root
+
+If you do not see any error messages consider yourself lucky.

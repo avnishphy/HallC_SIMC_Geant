@@ -1,0 +1,1550 @@
+//
+// TCaloEvent.cxx, v1.0, Thu Dec 29 14:42:50
+// Author: C. Munoz Camacho
+//
+
+#include <iostream>
+#include <stdlib.h>
+
+#ifndef ROOT_TObjectTable
+#include "TObjectTable.h"
+#endif
+
+#ifndef __TCaloEvent__
+#include "TCaloEvent.h"
+#endif
+
+#ifndef __TInt__
+#include "TInt.h"
+#endif
+
+#ifndef ROOT_TH2
+#include "TH2.h"
+#endif
+
+#ifndef ROOT_TStyle
+#include "TStyle.h"
+#endif
+
+using namespace std;
+
+ClassImp(TCaloEvent)
+
+////////////////////////////////////////////////////////////////////////////////
+//
+// DVCS calorimeter event class
+// 
+////////////////////////////////////////////////////////////////////////////////
+
+Bool_t           TCaloEvent::fgWarnings = kTRUE;
+Bool_t           TCaloEvent::fgErrors = kTRUE;
+TClonesArray    *TCaloEvent::fgCaloBlocks = 0;
+TClonesArray    *TCaloEvent::fgADC=0;
+TClonesArray    *TCaloEvent::fgARSWaves = 0;
+TClonesArray    *TCaloEvent::fgCluster = 0;
+TCaloTrigger    *TCaloEvent::fgCaloTrigger = 0;
+TClonesArray    *TCaloEvent::fgScalers = 0;
+Int_t            TCaloEvent::fgNNamedScalers = 0;
+//_____________________________________________________________________________
+TCaloEvent::TCaloEvent(Int_t run):TCaloBase(run)
+
+{
+  // Default constructor
+
+  //  cout<<"TCaloEvent constructor"<<endl;
+
+  if (!fgIsInit) Init(run);
+  if (!fgCaloBlocks) fgCaloBlocks = new TClonesArray("TCaloBlock", fgGeometry.GetNBlocks());
+  if (!fgCluster) fgCluster = new TClonesArray("TCaloCluster",1);
+  //  cout<<"fgCaloTrigger "<<fgCaloTrigger<<endl;
+  if (!fgCaloTrigger) fgCaloTrigger = new TCaloTrigger();
+  if (!fgADC) fgADC=new TClonesArray("TDouble",fgGeometry.GetNBlocks());
+  if (!fgARSWaves) fgARSWaves= new TClonesArray("TARSWave",1);
+  if (!fgScalers) fgScalers= new TClonesArray("TInt",1);
+  fADC=fgADC;
+
+   fCaloBlocks=fgCaloBlocks;
+   fCluster=fgCluster;
+   fCaloTrigger=fgCaloTrigger;
+   fARSWaves=fgARSWaves;
+   fScalers=fgScalers;
+   fgNNamedScalers=0;
+   fScalerName=0;
+   fScalerNameLength=0;
+   fHCalo=0;
+   fNbClusters=0;
+   fNbBlocks=0;
+   fNWave=0;
+   fRefShapeMC=0;
+   fNoiseHisto=0;
+   fRan=0;
+   fRefShapeInt=0;
+   //   fNoiseTime=-1;
+
+   fTestWaves=new TARSWave*[fgGeometry.GetNBlocks()];
+   for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) fTestWaves[i]=0;
+
+}
+
+/*
+//_____________________________________________________________________________
+ TCaloEvent::TCaloEvent(const TCaloEvent& TCaloevent)
+  // Copy constructor
+{
+  ((TCaloEvent&)TCaloevent).Copy(*this);
+}
+
+//_____________________________________________________________________________
+ void TCaloEvent::Copy(TObject& obj)
+{
+  // Copy routine. Used by copy ctor.
+
+  //  TObject::Copy(obj);
+
+  //  fgParameters.Copy(((TCaloBase&)obj).fgParameters);
+  //  ((TCaloBase&)obj).fgIsInit = fgIsInit;
+
+
+}
+*/
+//_____________________________________________________________________________
+ TCaloEvent::~TCaloEvent()
+{
+  // Default destructor
+
+  //  cout<<"TCaloEvent destructor"<<endl;
+
+  //Clear();
+  fCaloBlocks->Clear("C");
+  fCluster->Delete();//We delete because clusters allocate memory
+  fNbBlocks=0;
+  fNbClusters=0;
+  fCluster->Delete();
+  fARSWaves->Delete();
+  fADC->Delete();
+  delete fHCalo;
+
+}
+
+//_____________________________________________________________________________
+ Float_t TCaloEvent::GetEnergy(void)
+{
+  //    It returns the total energy in the calorimeter (all eventuals clusters summed over).
+  //Quick method which just sums over all blocks of the calorimeter.
+  //Therefore, no much physical information is returned if several clusters are present.
+
+  Float_t energy=0.;
+ 
+  for(Int_t i=0;i<fNbBlocks;i++){
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+    energy+=block->GetBlockEnergy();
+  }
+  return energy;
+}
+
+//_____________________________________________________________________________
+ TCaloBlock* TCaloEvent::AnalyzeBlockFast(Int_t nblock, Int_t nmin, Int_t nmax)
+{
+  if(nblock<0 || nblock>(fNbBlocks-1)) {
+    cout<<"ERROR this block does not exists : Check limits !"<<endl;
+    exit(1);
+  }
+  TARSWave* wave = (TARSWave*)fARSWaves->UncheckedAt(nblock);
+  TDoubleArray *array=wave->GetArray();
+  Float_t energy=array->GetIntegral(nmin,nmax);
+  Float_t time=array->GetMinimumBin(nmin,nmax);
+  TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(nblock);
+  block->AddPulse(energy,time);
+  return block;
+}
+
+//_____________________________________________________________________________
+ void TCaloEvent::AnalyzeFast(Int_t nmin, Int_t nmax)
+{
+  for(Int_t i=0;i<fNbBlocks;i++) AnalyzeBlockFast(i,nmin,nmax);
+}
+
+//_____________________________________________________________________________
+ Int_t TCaloEvent::GetBlockPosition(Int_t nb)
+{
+  //It returns the position of block number nb in the TClonesArray of blocks.
+  //If it is not there, it returns -1.
+
+  Int_t pos=-1,test=-1;
+  for(Int_t i=0;i<fNbBlocks;i++){
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+    test=block->GetBlockNumber();
+    if(test==nb){
+      pos=i;
+      return pos;
+    }
+  }
+  return pos;
+}
+
+//_____________________________________________________________________________
+ void TCaloEvent::SetTriggerValues(void)
+{
+  //Sets values from the ADC's in the trigger into blocks
+
+  if(fCaloBlocks) {
+    fCaloBlocks->Clear("C");
+    fNbBlocks=0; //We reset block counter
+  }
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++){
+    TCaloBlock* block=AddBlock(i); 
+    block->SetBlockEnergy(fCaloTrigger->GetADCValue(i));
+    
+  }
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::JitterSimulation(Float_t sigma, UInt_t seed1, UInt_t seed2)
+{ 
+  //Adds a gaussien jitter of sigma to all ARS waves of the event.
+  //To be used when ARS waves are simulated, obviously.
+
+
+  if(fNWave>0){
+    if(!fRan) {
+      fRan=new TRandom2();
+      fRan->SetSeed(seed1);
+    }
+    
+    Int_t samples=((TARSWave*)fARSWaves->UncheckedAt(0))->GetNbSamples();
+    
+    Int_t fJitter=Int_t(fRan->Gaus(0.,sigma));
+    
+    for(Int_t j=0;j<fNbBlocks;j++){        
+      TCaloBlock *block=(TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+      TARSWave *wave=(TARSWave*)fARSWaves->UncheckedAt(j);
+      if(fJitter<0){
+      for(Int_t i=0;i<samples;i++){
+        if(i-fJitter<samples+1){
+          Double_t val=wave->GetArray()->GetValue(i-fJitter);
+          wave->SetValue(i,val);
+        }else{wave->SetValue(i,0);}
+      } 
+      }else{
+	for(Int_t i=samples-1;i>-1;i--){
+	  if(i-fJitter>-1){
+	    Double_t val=wave->GetArray()->GetValue(i-fJitter);
+	    wave->SetValue(i,val);
+        }else{wave->SetValue(i,0);}
+	} 
+      }
+    }
+  }else{
+    cout<<"Error: TCaloEvent::JitterSimulation(Float_t sigma, UInt_t seed1, UInt_t seed2)"<<endl;
+    cout<<"is supposed to be used with simulated ARS waves, and it doesn't seem to be any!"<<endl;
+  }
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::TriggerSim(Double_t FourBlocksThreshold)
+{
+  Int_t blntemp[fgGeometry.GetNBlocks()];for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) blntemp[i]=0;
+  Double_t enetemp[fgGeometry.GetNBlocks()];
+  Double_t enetemp2[fgGeometry.GetNBlocks()];
+  Double_t timetemp[fgGeometry.GetNBlocks()];
+  Double_t timetemp2[fgGeometry.GetNBlocks()];
+  Double_t chi2[fgGeometry.GetNBlocks()];
+  Double_t pulsenb[fgGeometry.GetNBlocks()];
+  Double_t base[fgGeometry.GetNBlocks()];
+  Double_t comp=0;
+ 
+  Double_t ef=0.;
+  for(Int_t j=0;j<fgGeometry.GetNBlocks();j++) {
+    TCaloBlock *block=(TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(j));
+    ef=block->GetEnergy(0);
+    enetemp[j]=block->GetEnergy(0);
+    enetemp2[j]=block->GetEnergy(1);
+    timetemp[j]=block->GetTime(0);
+    timetemp2[j]=block->GetTime(1); 
+    chi2[j]=0;
+    //chi2[j]=block->GetChi2(0);
+    pulsenb[j]=block->GetPulseNumber();
+    base[j]=block->GetBase(); 
+
+
+    //Checking which pulse has higher amplitude
+    if((block->GetEnergy(1))>(block->GetEnergy(0))){
+    ef=block->GetEnergy(1);
+    }
+    //1st Neighbour
+    if(fgGeometry.GetNeighbour(j,4)!=-1){
+    //Checking which pulse has higher amplitude 
+      comp=((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,4))))->GetEnergy(0);
+      if(((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,4))))->GetEnergy(1)>comp){
+      comp=((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,4))))->GetEnergy(1);
+      }
+      ef+=comp;
+    }
+    //2nd Neighbour
+    if(fgGeometry.GetNeighbour(j,1)!=-1){
+     comp=((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,1))))->GetEnergy(0);
+     if(((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,1))))->GetEnergy(1)>comp){
+      comp=((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,1))))->GetEnergy(1);
+      }
+      ef+=comp;
+    }
+    //3rd Neighbour
+    if(fgGeometry.GetNeighbour(j,2)!=-1){
+     comp=((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,2))))->GetEnergy(0);
+     if(((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,2))))->GetEnergy(1)>comp){
+      comp=((TCaloBlock*)fCaloBlocks->UncheckedAt(GetBlockPosition(fgGeometry.GetNeighbour(j,2))))->GetEnergy(1);
+      }
+      ef+=comp;
+    }
+
+  //Threshold
+    if(ef>=FourBlocksThreshold) {
+      blntemp[j]=1;
+      if(fgGeometry.GetNeighbour(j,4)!=-1) blntemp[fgGeometry.GetNeighbour(j,4)]=1;
+      if(fgGeometry.GetNeighbour(j,1)!=-1) blntemp[fgGeometry.GetNeighbour(j,1)]=1;
+      if(fgGeometry.GetNeighbour(j,2)!=-1) blntemp[fgGeometry.GetNeighbour(j,2)]=1;
+    }
+  }
+
+  Double_t val[fgGeometry.GetNBlocks()][128];
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++){
+    Int_t nb=((TCaloBlock*)fCaloBlocks->UncheckedAt(i))->GetBlockNumber();
+    //for(Int_t k=0;k<128;k++) val[nb][k]=GetWave(i)->GetArray()->GetValue(k);
+  }
+  fCaloBlocks->Clear("C"); //We clear the array, we have saved a copy of blocks
+  //  if(fNWave>0) fARSWaves->Clear();
+  fNbBlocks=0; //We reset block counter
+  //fNWave=0;//We reset wave counter
+
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) {
+    if(blntemp[i]==1){
+      TCaloBlock *block=AddBlock(i); //We fill blocks selected by the trigger
+
+      if(pulsenb[i]==0){
+      block->SetChi2(0);
+      block->SetBaseline(0);
+      }
+
+      if(pulsenb[i]==1){
+      block->AddPulse(enetemp[i],timetemp[i]);
+      block->SetChi2(chi2[i]);
+      block->SetBaseline(base[i]);
+      }
+    
+      if(pulsenb[i]==2){
+      block->AddPulse(enetemp[i],timetemp[i]);
+      block->AddPulse(enetemp2[i],timetemp2[i]);
+      block->SetChi2(chi2[i]);
+      block->SetBaseline(base[i]);
+      }
+      //  TARSWave *wavenew=AddWave(128);  //And this is witty, we should copy this for blocks
+      // for(Int_t k=0;k<128;k++) wavenew->GetArray()->SetValue(k,val[i][k]);
+    }
+  }
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::TriggerSimulationReal(Double_t FourBlocksThreshold)
+{
+  Int_t blntemp[fgGeometry.GetNBlocks()];for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) blntemp[i]=0;
+  Double_t ef=0.;
+  for(Int_t j=0;j<fgGeometry.GetNBlocks();j++) {
+    ef=fCaloTrigger->GetADCValue(j);
+    if(fgGeometry.GetNeighbour(j,4)!=-1) ef+=fCaloTrigger->GetADCValue(fgGeometry.GetNeighbour(j,4));
+    if(fgGeometry.GetNeighbour(j,1)!=-1) ef+=fCaloTrigger->GetADCValue(fgGeometry.GetNeighbour(j,1));
+    if(fgGeometry.GetNeighbour(j,2)!=-1) ef+=fCaloTrigger->GetADCValue(fgGeometry.GetNeighbour(j,2));
+    if(ef>=FourBlocksThreshold) {
+      blntemp[j]=1;
+      if(fgGeometry.GetNeighbour(j,4)!=-1) blntemp[fgGeometry.GetNeighbour(j,4)]=1;
+      if(fgGeometry.GetNeighbour(j,1)!=-1) blntemp[fgGeometry.GetNeighbour(j,1)]=1;
+      if(fgGeometry.GetNeighbour(j,2)!=-1) blntemp[fgGeometry.GetNeighbour(j,2)]=1;
+    }
+  }
+  Double_t val[fgGeometry.GetNBlocks()][128];
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++){
+    Int_t nb=((TCaloBlock*)fCaloBlocks->UncheckedAt(i))->GetBlockNumber();
+    for(Int_t k=0;k<128;k++) val[nb][k]=GetWave(i)->GetArray()->GetValue(k);
+  }
+  fCaloBlocks->Clear("C"); //We clear the array, we have saved a copy of blocks
+  if(fNWave>0) fARSWaves->Clear();
+  fNbBlocks=0; //We reset block counter
+  fNWave=0;//We reset wave counter
+
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) {
+    if(blntemp[i]==1){
+      AddBlock(i); //We fill blocks selected by the trigger
+      TARSWave *wavenew=AddWave(128);  //And this is witty, we should copy this for blocks
+      for(Int_t k=0;k<128;k++) wavenew->GetArray()->SetValue(k,val[i][k]);
+    }
+  }
+}
+
+//_____________________________________________________________________________
+ void TCaloEvent::TriggerSimulation(Int_t tmin, Int_t tmax, Float_t FourBlocksThreshold, Bool_t kFORCE, Float_t ClockFreq, UInt_t seed1, UInt_t seed2)
+{
+  //    This method simulates the calorimeter trigger. It takes the sum of the energy
+  //loss in 4 contiguous blocks. If it is higher than FourBlocksThreshold the four
+  //blocks are recorded.
+  //    This method is to be used with simulated data before calling the DoClustering
+  //method.
+  //
+  //    When simulated ARS waves are present, this methods simulates the trigger
+  //integration window between [tmin,tmax). kFORCE is used in this case to force 
+  //the calculation of the normalization constant, in case you change the integration 
+  //window at every event (for instance, if you want to compare results with two 
+  //different integration windows). Finally ClockFreq is the trigger internal 
+  //clock frequency (in GHz). It is used to simulated the jitter at the end of the
+  //integration window.
+
+  //Block indexing
+
+ if(!fRan) {
+    fRan=new TRandom2();
+    fRan->SetSeed(seed1);
+  }
+ Int_t tmax2=tmax;
+ tmax=Int_t(fRan->Rndm())*(1./ClockFreq)-(0.5/ClockFreq)+tmax;
+
+ if(fRefShapeMC){
+   if(fRefShapeInt==0 || kFORCE==kTRUE) {
+     fRefShapeInt=0;
+     for(Int_t i=tmin;i<tmax2;i++){
+       fRefShapeInt+=fRefShapeMC[i] ;
+     }
+   }
+ }
+ 
+ Int_t bl[fgGeometry.GetNBlocks()];
+ Int_t blinv[fgGeometry.GetNBlocks()];
+ for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) {
+   blinv[i]=-1;
+   bl[i]=-1;
+ }
+ for(Int_t i=0;i<fNbBlocks;i++) {
+   TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+   bl[i]=block->GetBlockNumber();
+   blinv[bl[i]]=i;
+   if(fNWave>0) {
+     TARSWave *wave=(TARSWave*)fARSWaves->UncheckedAt(i);
+     block->Erase("");
+     if(fRefShapeInt==0) cout<<"Error: reference shape is not initialized or has zero integral"<<endl;
+     block->SetBlockEnergy((wave->GetArray()->GetIntegral(tmin,tmax))/(Double_t(fRefShapeInt)));
+   }
+ }
+ //
+ Int_t blntemp[fNbBlocks];  // This is a temporary array used only because the
+                       // clustering method WILL create double countings
+                       // of blocks. A block hit corresponds to a 1,
+                       // otherwise it's initialized at 0.
+ for(Int_t i=0;i<fNbBlocks;i++) {
+   blntemp[i]=0;
+ }
+
+ TCaloBlock* block[4];
+ TCaloBlock* fblocktmp[fNbBlocks];
+ Float_t ef;   // energy
+ Int_t row=fgGeometry.GetNY();
+ for(Int_t j=0;j<fgGeometry.GetNBlocks();j++) {
+   if((j+1)%row!=0 && (j-j/row)<(fgGeometry.GetNBlocks()-fgGeometry.GetNX()-fgGeometry.GetNY()+1)) fCaloTrigger->SetTowerBit(j-j/row,kFALSE);
+   if(blinv[j]!=-1){
+     fblocktmp[blinv[j]] = (TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[j]);
+   }
+   for(Int_t ik=0;ik<4;ik++) block[ik]='\0';
+   ef=0.;
+   if(blinv[j]!=-1){
+     block[0] =(TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[j]);
+     ef+=block[0]->GetBlockEnergy();
+   }else{
+     ef=0.;
+   }
+   
+   if(blinv[fgGeometry.GetNeighbour(j,4)]!=-1 && fgGeometry.GetNeighbour(j,4)!=-1){
+     block[1] =(TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[fgGeometry.GetNeighbour(j,4)]);
+     ef+=block[1]->GetBlockEnergy();
+   }
+   if(blinv[fgGeometry.GetNeighbour(j,1)]!=-1 && fgGeometry.GetNeighbour(j,1)!=-1){
+     block[2] =(TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[fgGeometry.GetNeighbour(j,1)]);
+     ef+=block[2]->GetBlockEnergy();
+   }
+   if(blinv[fgGeometry.GetNeighbour(j,2)]!=-1 && fgGeometry.GetNeighbour(j,2)!=-1){
+     block[3] =(TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[fgGeometry.GetNeighbour(j,2)]);
+     ef+=block[3]->GetBlockEnergy();
+   }
+   if(ef>=FourBlocksThreshold) {
+     if((j+1)%row!=0 && (j-j/row)<(fgGeometry.GetNBlocks()-fgGeometry.GetNX()-fgGeometry.GetNY()+1)) fCaloTrigger->SetTowerBit(j-j/row,kTRUE);
+     for(Int_t i=0;i<4;i++) {
+       if(block[i]){
+	 blntemp[blinv[block[i]->GetBlockNumber()]]=1;
+       }
+     }
+   }
+ }
+ 
+ Double_t ecopy[fNbBlocks];Int_t nbcopy[fNbBlocks];
+ for(Int_t i=0;i<fNbBlocks;i++){
+   nbcopy[i]=fblocktmp[i]->GetBlockNumber();
+   ecopy[i]=fblocktmp[i]->GetBlockEnergy();
+ }
+
+  TARSWave *GoodWave[fNbBlocks];
+  Int_t k=0;
+  if(fNWave>0){
+    for(Int_t i=0;i<fNbBlocks;i++){
+      while((GetWave(i)->GetArray())!=(fTestWaves[k]->GetArray())) k++;
+       GoodWave[i]=fTestWaves[k];
+    }
+  }
+  fCaloBlocks->Clear("C"); //We clear the array, we have saved a copy of
+                           //blocks
+  if(fNWave>0) {
+    fARSWaves->Clear();
+  }
+  Int_t j=fNbBlocks;
+  Int_t jw=fNWave;
+  fNbBlocks=0; //We reset block counter
+  fNWave=0;//We reset wave counter
+  for(Int_t i=0;i<j;i++) {
+    if(blntemp[i]==1){
+      TCaloBlock *bnew=AddBlock(nbcopy[i]); //We fill blocks selected by the trigger
+      bnew->SetBlockEnergy(ecopy[i]);
+      if(jw>0) AddWave(GoodWave[i]);  //And this is witty, we should copy this for blocks
+    }
+  }
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::Clear(void)
+{
+  //Clears the event
+  //  fNoiseTime=-1;
+
+
+    fCaloBlocks->Clear("C");
+    //for(Int_t i=0;i<fCaloBlocks->GetLast();i++){
+    //for(Int_t i=0;i<fNbBlocks;i++){
+    //TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+    //block->Reset();
+    // }
+
+
+//    for(Int_t i=0;i<fNbClusters;i++){
+//      delete (TCaloCluster*)fCluster->UncheckedAt(i);
+//    }
+//    fCluster->Clear();
+//  cout<<"titi"<<endl;
+
+//  if(fNbClusters>0) fCluster->Delete();//We delete because clusters allocate memory
+  //cout<<"titi"<<endl;
+
+  fNbBlocks=0;
+  fNbClusters=0;
+  fNWave=0;
+  //  fARSArray->Reset();
+  //  cout<<"clearing tcaloevent"<<endl;
+//    for(Int_t i=0;i<fARSWaves->GetEntries();i++){
+//      TARSWave* wave = (TARSWave*)fARSWaves->UncheckedAt(i);
+//      wave->Reset();
+//    }
+  fARSWaves->Clear();
+  fADC->Clear("C");
+  //  cout<<"titi"<<endl;
+  if(fHCalo) fHCalo->Clear();
+  //cout<<"titi"<<endl;
+  if(fCaloTrigger) {
+    //    cout<<"avant clear trigger"<<endl;
+    fCaloTrigger->Clear("C");//Check if we need Delete()...!!
+    //    fCaloTrigger->Delete();//Check if we need Delete()...!!
+//     delete fCaloTrigger;
+//     fCaloTrigger=0;
+  }
+  fScalers->Clear("C");
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::Reset(void)
+{
+  //Clears the event, but don't call clusters destructors
+
+  //  fNoiseTime=-1;
+  //  fCaloBlocks->Clear("C");
+  for(Int_t i=0;i<fNbBlocks;i++){
+    //for(Int_t i=0;i<fNbBlocks;i++){
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+    block->Clear("");
+  }
+  fNWave=0;
+  fCluster->Clear("C");
+  //fCluster->Delete();
+  fNbBlocks=0;
+  fNbClusters=0;
+  //fARSWaves->Reset();
+  //fARSWaves->Clear("C");
+  fARSWaves->Clear();
+  fADC->Clear("C");
+ if(fHCalo) fHCalo->Clear();
+  if(fCaloTrigger) {
+    //fCaloTrigger->Clear("C");//Check if we need Delete()...!!
+    //    fCaloTrigger->Delete();//Check if we need Delete()...!!
+    //     delete fCaloTrigger;
+    fCaloTrigger->Clear("C");
+    //    fCaloTrigger=0;
+  }
+  fScalers->Clear("C");
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::SetScaler(Int_t id, Int_t val)
+{
+  //It sets the value of scaler id
+  TClonesArray &scalers = *fScalers;
+  new(scalers[id]) TInt(val);
+}
+
+//_____________________________________________________________________________
+Int_t TCaloEvent::GetScaler(Int_t id)
+{
+  //It gets the value of scaler id
+  if(fScalers->GetLast()+1>id){
+    TInt *val=(TInt*)fScalers->UncheckedAt(id);
+    if(val){
+      return val->GetValue();
+    }else{
+      cout<<"No scaler with id "<<id<<endl;
+      return 0;
+    }    
+  }else{
+    cout<<"No scaler with id "<<id<<endl;
+    return 0;
+  }
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::SetScaler(char* name, Int_t val)
+{
+  //It sets the value of scaler name
+
+  Int_t id=-1;
+  for(Int_t i=0;i<fgNNamedScalers;i++){
+    Int_t pv = fScalerNameLength[i];
+    TString st=(&fScalerName[pv]);
+    if(st==name) id=i;
+  }
+  if(id==-1) {
+    cout<<"No scaler with is name was found"<<endl;
+    return;
+  }
+  TClonesArray &scalers = *fScalers;
+  new(scalers[id]) TInt(val);
+
+}
+
+//_____________________________________________________________________________
+Int_t TCaloEvent::GetScaler(char* name)
+{
+  //It gets the value of scaler name
+  Int_t id=100000000;
+  for(Int_t i=0;i<fgNNamedScalers;i++){
+    Int_t pv = fScalerNameLength[i];
+    TString st=(&fScalerName[pv]);
+    if(st==name) id=i;
+  }
+  if(fScalers->GetLast()+1>id){
+    TInt *val=(TInt*)fScalers->UncheckedAt(id);
+    if(val){
+      return val->GetValue();
+    }else{
+      cout<<"No scaler with id "<<id<<endl;
+      return 0;
+    }    
+  }else{
+    cout<<"No scaler with id "<<id<<endl;
+    return 0;
+  }
+ }
+
+//_____________________________________________________________________________
+void TCaloEvent::SetScalersNames(const char *names)
+{
+  //Sets the names of scalers: ex "scaler1:scaler2:scaler3")  
+
+   Int_t i;
+
+   // Count number of variables (separated by :)
+   Int_t nch = strlen(names);
+   if (nch == 0) return;
+   fScalerName = new char[nch+1];
+   strcpy(fScalerName,names);
+   fScalerNameLength= new Int_t[1000];
+   fgNNamedScalers = 1;
+   fScalerNameLength[0] = 0;
+   for (i=1;i<nch;i++) {
+      if (fScalerName[i] == ':') {
+         fScalerNameLength[fgNNamedScalers] = i+1;
+         fScalerName[i] = 0;
+         fgNNamedScalers++;
+      }
+   }
+}
+
+//_____________________________________________________________________________
+Double_t TCaloEvent::SetADC(Int_t i, Double_t val)
+{
+  //It sets the value to ADC i
+  
+  // new with placement operator
+  TClonesArray &adcs = *fADC;
+  TDouble* value = new(adcs[i]) TDouble(val);
+  return value->GetValue();
+}
+
+//_____________________________________________________________________________
+TCaloBlock* TCaloEvent::AddBlock(Int_t i)
+{
+  //    It adds the TCaloBlock to the TClonesArray of blocks after the last one.
+  
+  // new with placement operator
+  TClonesArray &blocks = *fCaloBlocks;
+  TCaloBlock *caloblock = new(blocks[fNbBlocks++]) TCaloBlock();
+  caloblock->SetBlockNumber(i);
+  //  fCaloTrigger->SetBlockBit(i,kTRUE);
+  return caloblock;
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::AddBlock(TCaloBlock* block)
+{
+  //    It adds the TCaloBlock to the TClonesArray of blocks after the last one.
+
+  // new with placement operator
+  TClonesArray &blocks = *fCaloBlocks;
+  new(blocks[fNbBlocks++]) TCaloBlock(*block);
+}
+
+//_____________________________________________________________________________
+TCaloCluster* TCaloEvent::AddCluster(void)
+{
+  //    It adds the TCaloBlock to the TClonesArray of blocks at position i.
+  
+  // new with placement operator
+  TClonesArray &clusters = *fCluster;
+  TCaloCluster *calocluster = new(clusters[fNbClusters++]) TCaloCluster();
+  
+  return calocluster;
+
+}
+
+//_____________________________________________________________________________
+TARSWave* TCaloEvent::AddWave(TARSWave *wave)
+
+{
+  //    It adds the TCaloBlock to the TClonesArray of blocks at position i.
+  
+  // new with placement operator
+  TClonesArray &waves = *fARSWaves;
+  TARSWave *newwave=new(waves[fNWave++]) TARSWave(wave);
+  return newwave;
+}
+
+//_____________________________________________________________________________
+TARSWave* TCaloEvent::AddWave(void)
+
+{
+  //    It adds the TCaloBlock to the TClonesArray of blocks at position i.
+  
+  // new with placement operator
+  TClonesArray &waves = *fARSWaves;
+  TARSWave *calowave = new(waves[fNWave++]) TARSWave();
+  
+  return calowave;
+
+}
+
+//_____________________________________________________________________________
+TARSWave* TCaloEvent::AddWave(Int_t size)
+{
+  //    It adds the TCaloBlock to the TClonesArray of blocks at position i.
+  
+  // new with placement operator
+
+  if(fTestWaves[fNWave]==0) {
+    if(size==-1){
+      fTestWaves[fNWave]=new TARSWave();
+    }else{
+      fTestWaves[fNWave]=new TARSWave(size);
+    }
+  }
+  TClonesArray &waves = *fARSWaves;
+  TARSWave *calowave = new(waves[fNWave]) TARSWave(fTestWaves[fNWave]);
+  
+  fNWave++;						   
+  return calowave;
+
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::GetMax(Float_t enei[8],Int_t nei[8], Int_t &virusbl ,Float_t &max)
+{
+  //    This is just a private function used by the DoClustering method.
+  //It returns (by reference) the highest energy neighbour block number (virusbl) and the corresponding energy (max),
+  //given the 8-element arrays of neighbour numbers (nei) and corresponding energies (enei). 
+
+  max=-1;
+  virusbl=-1;
+  for(Int_t i=0;i<8;i++){
+    if(enei[i]>=max) {
+      max=enei[i];
+      virusbl=nei[i];
+    }
+  }
+}
+
+//_____________________________________________________________________________
+ Int_t TCaloEvent::DoClustering(Double_t timemin, Double_t timemax, Float_t BlockThreshold)
+{
+  //    It does the clustering following the cellular automata method. 
+  //It finds how many clusters there are and fills the corresponding clusters.
+  //    One optional parameter is implemented:
+  //BlockThreshold is the energy threshold for a block to be taken into account by the clustering method. 
+  //Blocks with energy lower or equal to BlockThreshold will be neglected and will not be place in any cluster.
+  //This parameter may not be used as the trigger would do the job, 
+  //but remember that the trigger would record blocks with very low energy 
+  //if one neighbour has high energy. We might want to filter these blocks 
+  //during the clustering.
+
+  Int_t returnval=0;
+  Bool_t virus[fNbBlocks], virustmp[fNbBlocks], ill[fNbBlocks];
+  Float_t epas[fgGeometry.GetNBlocks()], epastmp[fgGeometry.GetNBlocks()], enei[8];
+  Double_t blocksenergy[fgGeometry.GetNBlocks()];
+  Int_t NbClusters=0;
+  for(Int_t i=0;i<fNbClusters;i++) GetCluster(i)->Clear("");
+  //if(fNbClusters>0) fCluster->Delete();
+  //In case the method has already been called before on the same event
+  fNbClusters=0;
+ 
+  //Block indexing
+  Int_t bl[fNbBlocks];
+  Int_t blinv[fgGeometry.GetNBlocks()];
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) {
+    blocksenergy[i]=0.;
+    blinv[i]=-1;
+  }
+  for(Int_t i=0;i<fNbBlocks;i++) {
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+    bl[i]=block->GetBlockNumber();
+    blinv[bl[i]]=i;
+    blocksenergy[block->GetBlockNumber()]=block->GetBlockEnergy();
+
+    //If a time window is used, blocks with no pulse inside it are excluded
+    if(timemin>-1000||timemax>-1000){
+      if(block->GetEnergy(0)>0.&&(block->GetTime(0)<timemin||block->GetTime(0)>timemax)
+	 &&block->GetEnergy(1)>0.&&(block->GetTime(1)<timemin||block->GetTime(1)>timemax)) {
+	blocksenergy[block->GetBlockNumber()]=-10;
+      }
+      if(!(block->GetEnergy(1)>0.) &&(block->GetTime(0)<timemin||block->GetTime(0)>timemax))
+	 blocksenergy[block->GetBlockNumber()]=-10;
+
+      if(block->GetEnergy(0)>0.&&block->GetTime(0)>=timemin&&block->GetTime(0)<=timemax)
+	blocksenergy[block->GetBlockNumber()]=block->GetEnergy(0);
+
+      if(block->GetEnergy(1)>0.&&block->GetTime(1)>=timemin&&block->GetTime(1)<=timemax
+	 && (TMath::Abs( (block->GetTime(1) )-( (timemax+timemin)/2.) ) <
+	     TMath::Abs( (block->GetTime(0) )-( (timemax+timemin)/2.) ) )   )
+	blocksenergy[block->GetBlockNumber()]=block->GetEnergy(1);
+      
+      if(block->GetEnergy(0)>0.&&block->GetTime(0)>=timemin&&block->GetTime(0)<=timemax
+	 &&block->GetEnergy(1)>0.&&block->GetTime(1)>=timemin&&block->GetTime(1)<=timemax) {
+	returnval++;//If two pulses the energy is set to the closest in time to the middle of the window
+      }
+    }
+    
+  }
+
+  //Local maxima identification
+  for(Int_t j=0;j<fNbBlocks;j++){//<---------------
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+    if(blocksenergy[block->GetBlockNumber()]>BlockThreshold) {
+      ill[j]=false;
+      virus[j]=true;
+      virustmp[j]=true;
+    }
+    else{
+      ill[j]=true;
+      virus[j]=false;
+      virustmp[j]=false;
+    }
+    //If a block has less than BlockThreshold, it doesn't participate to the clustering process. 
+    
+    if(blocksenergy[block->GetBlockNumber()]>BlockThreshold) {
+      for(Int_t k=0;k<8;k++){
+	if(fgGeometry.GetNeighbour(block->GetBlockNumber(),k)!=-1 && blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),k)]!=-1){
+	  TCaloBlock* blocknei = (TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),k)]);
+	  if(blocksenergy[blocknei->GetBlockNumber()]>=blocksenergy[block->GetBlockNumber()]) {virus[j]=false;virustmp[j]=false;}
+	  //If there's one neighbour with more energy, it's not a local maximum
+	}
+      }
+      if (virus[j]==true) NbClusters++;
+    }
+  }
+  Int_t cp=0; //Just a counter
+  Float_t evirus[NbClusters];
+  for(Int_t j=0;j<fNbBlocks;j++){
+    if(virus[j]==true){
+      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+      evirus[cp]=blocksenergy[block->GetBlockNumber()]; //Virus' energies
+      cp++;
+    }
+  }
+
+  for(Int_t jj=0;jj<fgGeometry.GetNBlocks();jj++){
+    epas[jj]=0.;
+    epastmp[jj]=-1;
+  }
+  for(Int_t jj=0;jj<fNbBlocks;jj++){//<-----------------------------
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(jj);
+    epas[block->GetBlockNumber()]=blocksenergy[block->GetBlockNumber()]; //Initialization
+    if(virus[jj]) {ill[jj]=true; epastmp[bl[jj]]=blocksenergy[block->GetBlockNumber()];}// A virus is always ill;
+  }
+
+  //Contamination (until all cells contaminated by a virus become ill)
+  Int_t safe=0, nbfine=1, virusbl=-2;
+  while(nbfine>0  && safe<15){ //Loop STEP //////////////////////
+    safe++;
+    for(Int_t j=0;j<fNbBlocks;j++){ //Loop over blocks
+      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+      if(!ill[j]){
+	for(Int_t tt=0;tt<8;tt++){
+	  if(fgGeometry.GetNeighbour(block->GetBlockNumber(),tt)!=-1 && blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),tt)]!=-1){
+	    enei[tt]=epas[fgGeometry.GetNeighbour(block->GetBlockNumber(),tt)];
+	  }
+	  else{
+	    enei[tt]=0.;
+	  }
+	}
+	Float_t max=0.;
+	Int_t nei[8];
+	for(Int_t inei=0;inei<8;inei++) {
+	  if(fgGeometry.GetNeighbour(block->GetBlockNumber(),inei)!=-1){
+	    nei[inei]=blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),inei)];}
+	  else{
+	    nei[inei]=-1;
+	  }
+	}
+	GetMax(enei,nei,virusbl,max);
+	epastmp[bl[j]]=max;
+	
+	if(virus[virusbl]){
+	  ill[j]=true;//If contaminated by a virus, it becomes ill (so we stop and we go on to the next block!)
+	  virustmp[j]=true; //If contaminated by a virus, it will be considered as a virus (next time!!)
+	}
+      }
+    }
+    //Update once we've looped over all blocks
+    for(Int_t up=0;up<fgGeometry.GetNBlocks();up++){
+      if(up<fNbBlocks) virus[up]=virustmp[up];
+      if(epastmp[up]!=-1) epas[up]=epastmp[up];
+    }
+    // Test for still ill blocks. Otherwise it's finished !
+    nbfine=0;
+    for(Int_t ii=0;ii<fNbBlocks;ii++){
+      if(!ill[ii]) {
+  	nbfine++;
+      }
+    }
+  } //End loop step
+
+  // End cluster separation ////////////////
+
+  // Clusters filling...
+
+  for(Int_t j=0;j<NbClusters;j++){
+    TCaloCluster* cluster = AddCluster();
+    for(Int_t i=0;i<fNbBlocks;i++){//<--------------------------------------
+      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+      if(epastmp[bl[i]]==evirus[j] && blocksenergy[block->GetBlockNumber()]>BlockThreshold) {
+	cluster->AddBlock(block);
+      }
+    }
+  }    
+
+  //For debugging ... 
+  if(fgErrors==kTRUE){
+    if(safe>13) cout<<endl<<"ERROR: Clusters have not been calculated properly !"<<endl;
+  }
+
+  return returnval;
+}
+
+//_____________________________________________________________________________
+ Int_t TCaloEvent::DoClustering(Double_t timemin1, Double_t timemax1, Double_t timemin2, Double_t timemax2, Float_t BlockThreshold)
+{
+  //    It does the clustering following the cellular automata method. 
+  //It finds how many clusters there are and fills the corresponding clusters.
+  //    One optional parameter is implemented:
+  //BlockThreshold is the energy threshold for a block to be taken into account by the clustering method. 
+  //Blocks with energy lower or equal to BlockThreshold will be neglected and will not be place in any cluster.
+  //This parameter may not be used as the trigger would do the job, 
+  //but remember that the trigger would record blocks with very low energy 
+  //if one neighbour has high energy. We might want to filter these blocks 
+  //during the clustering.
+
+  Int_t returnval=0;
+  Bool_t virus[fNbBlocks], virustmp[fNbBlocks], ill[fNbBlocks];
+  Float_t epas[fgGeometry.GetNBlocks()], epastmp[fgGeometry.GetNBlocks()], enei[8];
+  Double_t blocksenergy[fgGeometry.GetNBlocks()];
+  for(Int_t i=0;i<fNbClusters;i++) GetCluster(i)->Clear("");
+  //if(fNbClusters>0) fCluster->Delete();
+  //In case the method has already been called before on the same event
+  fNbClusters=0;
+ 
+  //Block indexing
+  Int_t bl[fNbBlocks];
+  Int_t blinv[fgGeometry.GetNBlocks()];
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++) {
+    blocksenergy[i]=0.;
+    blinv[i]=-1;
+  }
+  
+  Double_t timemin=timemin1;
+  Double_t timemax=timemax1;
+  for(Int_t nwindow=0; nwindow<2; nwindow++){//Loop over clustering windows
+    if(nwindow==1){
+      timemin=timemin2;
+      timemax=timemax2;
+    }
+    Int_t NbClusters=0;
+    for(Int_t i=0;i<fNbBlocks;i++) {
+      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+      bl[i]=block->GetBlockNumber();
+      blinv[bl[i]]=i;
+      blocksenergy[block->GetBlockNumber()]=block->GetBlockEnergy();
+      
+      //If a time window is used, blocks with no pulse inside it are excluded
+      if(timemin>-1000||timemax>-1000){
+	if(block->GetEnergy(0)>0.&&(block->GetTime(0)<timemin||block->GetTime(0)>timemax)
+	   &&block->GetEnergy(1)>0.&&(block->GetTime(1)<timemin||block->GetTime(1)>timemax)) {
+	  blocksenergy[block->GetBlockNumber()]=-10;
+	}
+	if(!(block->GetEnergy(1)>0.) &&(block->GetTime(0)<timemin||block->GetTime(0)>timemax))
+	  blocksenergy[block->GetBlockNumber()]=-10;
+	
+	if(block->GetEnergy(0)>0.&&block->GetTime(0)>=timemin&&block->GetTime(0)<=timemax)
+	  blocksenergy[block->GetBlockNumber()]=block->GetEnergy(0);
+	
+	if(block->GetEnergy(1)>0.&&block->GetTime(1)>=timemin&&block->GetTime(1)<=timemax
+	   && (TMath::Abs( (block->GetTime(1) )-( (timemax+timemin)/2.) ) <
+	       TMath::Abs( (block->GetTime(0) )-( (timemax+timemin)/2.) ) )   )
+	  blocksenergy[block->GetBlockNumber()]=block->GetEnergy(1);
+	
+	if(block->GetEnergy(0)>0.&&block->GetTime(0)>=timemin&&block->GetTime(0)<=timemax
+	   &&block->GetEnergy(1)>0.&&block->GetTime(1)>=timemin&&block->GetTime(1)<=timemax) {
+	  returnval++;//If two pulses the energy is set to the closest in time to the middle of the window
+	}
+      }
+    }
+    
+    //Local maxima identification
+    for(Int_t j=0;j<fNbBlocks;j++){//<---------------
+      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+      if(blocksenergy[block->GetBlockNumber()]>BlockThreshold) {
+	ill[j]=false;
+	virus[j]=true;
+	virustmp[j]=true;
+      }
+      else{
+      ill[j]=true;
+      virus[j]=false;
+      virustmp[j]=false;
+      }
+      //If a block has less than BlockThreshold, it doesn't participate to the clustering process. 
+      
+      if(blocksenergy[block->GetBlockNumber()]>BlockThreshold) {
+	for(Int_t k=0;k<8;k++){
+	  if(fgGeometry.GetNeighbour(block->GetBlockNumber(),k)!=-1 && blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),k)]!=-1){
+	    TCaloBlock* blocknei = (TCaloBlock*)fCaloBlocks->UncheckedAt(blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),k)]);
+	    if(blocksenergy[blocknei->GetBlockNumber()]>=blocksenergy[block->GetBlockNumber()]) {virus[j]=false;virustmp[j]=false;}
+	    //If there's one neighbour with more energy, it's not a local maximum
+	  }
+	}
+	
+	if (virus[j]==true) NbClusters++;
+      }
+    }
+    Int_t cp=0; //Just a counter
+    Float_t evirus[NbClusters];
+    for(Int_t j=0;j<fNbBlocks;j++){
+      if(virus[j]==true){
+	TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+	evirus[cp]=blocksenergy[block->GetBlockNumber()]; //Virus' energies
+	cp++;
+      }
+    }
+    
+    for(Int_t jj=0;jj<fgGeometry.GetNBlocks();jj++){
+      epas[jj]=0.;
+      epastmp[jj]=-1;
+    }
+    for(Int_t jj=0;jj<fNbBlocks;jj++){//<-----------------------------
+      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(jj);
+      epas[block->GetBlockNumber()]=blocksenergy[block->GetBlockNumber()]; //Initialization
+      if(virus[jj]) {ill[jj]=true; epastmp[bl[jj]]=blocksenergy[block->GetBlockNumber()];}// A virus is always ill;
+    }
+    
+  //Contamination (until all cells contaminated by a virus become ill)
+    Int_t safe=0, nbfine=1, virusbl=-2;
+    while(nbfine>0  && safe<15){ //Loop STEP //////////////////////
+      safe++;
+      for(Int_t j=0;j<fNbBlocks;j++){ //Loop over blocks
+	TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+	if(!ill[j]){
+	  for(Int_t tt=0;tt<8;tt++){
+	    if(fgGeometry.GetNeighbour(block->GetBlockNumber(),tt)!=-1 && blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),tt)]!=-1){
+	      enei[tt]=epas[fgGeometry.GetNeighbour(block->GetBlockNumber(),tt)];
+	    }
+	    else{
+	      enei[tt]=0.;
+	    }
+	  }
+	  Float_t max=0.;
+	  Int_t nei[8];
+	  for(Int_t inei=0;inei<8;inei++) {
+	    if(fgGeometry.GetNeighbour(block->GetBlockNumber(),inei)!=-1){
+	      nei[inei]=blinv[fgGeometry.GetNeighbour(block->GetBlockNumber(),inei)];}
+	    else{
+	      nei[inei]=-1;
+	    }
+	  }
+	  GetMax(enei,nei,virusbl,max);
+	  epastmp[bl[j]]=max;
+	  
+	  if(virus[virusbl]){
+	    ill[j]=true;//If contaminated by a virus, it becomes ill (so we stop and we go on to the next block!)
+	    virustmp[j]=true; //If contaminated by a virus, it will be considered as a virus (next time!!)
+	  }
+	}
+      }
+      //Update once we've looped over all blocks
+      for(Int_t up=0;up<fgGeometry.GetNBlocks();up++){
+	if(up<fNbBlocks) virus[up]=virustmp[up];
+	if(epastmp[up]!=-1) epas[up]=epastmp[up];
+      }
+      // Test for still ill blocks. Otherwise it's finished !
+      nbfine=0;
+      for(Int_t ii=0;ii<fNbBlocks;ii++){
+	if(!ill[ii]) {
+	  nbfine++;
+	}
+      }
+    } //End loop step
+    
+    // End cluster separation ////////////////
+    
+    // Clusters filling...
+
+    for(Int_t j=0;j<NbClusters;j++){
+      TCaloCluster* cluster = AddCluster();
+      for(Int_t i=0;i<fNbBlocks;i++){//<--------------------------------------
+	TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+	if(epastmp[bl[i]]==evirus[j] && blocksenergy[block->GetBlockNumber()]>BlockThreshold) {
+	  cluster->AddBlock(block);
+	}
+      }
+    }    
+    
+    //For debugging ... 
+    if(fgErrors==kTRUE){
+      if(safe>13) cout<<endl<<"ERROR: Clusters have not been calculated properly !"<<endl;
+    }
+  }//End loop on clustering windows
+  return returnval;
+}
+  
+  //_____________________________________________________________________________
+void TCaloEvent::Display(TPad *display, Float_t HistMax, Float_t BlockThreshold)
+{
+  //    This method gets a TCanvas* and plots inside a display of the calorimeter event.
+  //A TH2 with bins simulating each calorimeter block is displayed.
+  //The number shown in each block correspond to the energy loss in the block
+  //(in MeV if original energy is in GeV).
+  //Coloring is also implemented for easy visualisation.
+  //    Two optional parameters are implemented : HistMax and BlockThreshold.
+  //HistMax allows to set a maximum to the TH2. This is especially useful for
+  //comparisons as it allows to set a unique color scale. If it is not 
+  //specified, color scale maximum will be calculated automatically using the
+  //value of the block of maximum energy loss.
+  //BlockThreshold sets an energy threshold for a block to be displayed.
+  //It is set to zero by default. In any case, even if color is displayed,
+  //energy loss will not be shown if it is less than 0.001
+
+  if (!fHCalo) {
+    fHCalo=new THCalo(display,HistMax);
+  }else{
+    fHCalo->Clear();
+    fHCalo->SetPad(display);
+  }
+
+  fHCalo->SetMax(HistMax);
+
+  //if (!fHCalo) fHCalo=new THCalo();
+  //Data filling
+  for(Int_t k=0;k<fNbBlocks;k++){
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(k);
+    if (block->GetBlockEnergy()>BlockThreshold) {
+      fHCalo->SetBinContent(Int_t((block->GetBlockNumber())/fgGeometry.GetNY()+0.5)+1,Int_t((block->GetBlockNumber())%fgGeometry.GetNY()+0.5)+1,block->GetBlockEnergy()*1000.);
+    }
+  }
+  cout<<fHCalo<<endl;
+  cout<<"Starting drawing..."<<endl;
+  fHCalo->Draw();
+  cout<<"Drawing done!"<<endl;
+}
+
+
+//    gStyle->SetOptStat(0);
+//    gStyle->SetPalette(1);
+//    display->cd();
+
+//    //Histos declaration
+//    TH2F *calotmp = new TH2F("calotmp","Calorimeter Display",fgGeometry.GetNX(),0.5,fgGeometry.GetNX()+0.5,fgGeometry.GetNY(),0.5,fgGeometry.GetNY()+0.5);
+//    TH2F *calo = new TH2F("calo","Calorimeter Display",fgGeometry.GetNX(),0.5,fgGeometry.GetNX()+0.5,fgGeometry.GetNY(),0.5,fgGeometry.GetNY()+0.5);
+//    TH2F *hcalo = new TH2F("hcalo","Calorimeter Display",fgGeometry.GetNX(),0.5,fgGeometry.GetNX()+0.5,fgGeometry.GetNY(),0.5,fgGeometry.GetNY()+0.5);
+
+//    //Data filling
+//    for(Int_t k=0;k<fNbBlocks;k++){
+//      TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(k);
+//      if (block->GetBlockEnergy()>BlockThreshold) {
+//        calotmp->Fill((block->GetBlockNumber())%fgGeometry.GetNX()+0.5,(block->GetBlockNumber())/fgGeometry.GetNX()+0.5,block->GetBlockEnergy());
+//      }
+//    }
+  
+//    //Histos filling and arrangement
+//    for(Int_t kf=1;kf<fgGeometry.GetNX()+1;kf++){
+//      for(Int_t kf2=1;kf2<fgGeometry.GetNY()+1;kf2++){
+//        Float_t tmp=calotmp->GetBinContent(kf,kf2);
+//        calo->SetBinContent(kf,fgGeometry.GetNY()+1-kf2,tmp);
+//        hcalo->SetBinContent(kf,fgGeometry.GetNY()+1-kf2,int(tmp*1000.));
+//        //Conversion GeV->MeV for text display
+//      }
+//    }
+//    //Making display look beautiful...
+//    hcalo->SetMarkerSize(1.6);
+//    display->SetGridx();
+//    display->SetGridy();
+  
+//    (calo->GetYaxis())->SetNdivisions(fgGeometry.GetNY(),kFALSE); 
+//    (calo->GetXaxis())->SetNdivisions(fgGeometry.GetNX(),kFALSE); 
+//    (calo->GetYaxis())->SetLabelColor(kWhite);
+//    (calo->GetXaxis())->SetLabelColor(kWhite);
+  
+//    calo->SetMinimum(0);
+//    hcalo->SetMinimum(0);
+//    if(HistMax!=-1.) {
+//      calo->SetMaximum(HistMax);
+//      hcalo->SetMaximum(HistMax*1000);
+//      //Setting of maximum histogram value. Automatically calculated if not specified.
+//    }
+
+//    //Drawing...
+//    calo->Draw("colz");
+//    hcalo->Draw("textsame");
+//    display->Update();
+//    display->Modified();
+  
+//    //We delete everything
+//    delete calotmp;
+//    delete calo;
+//    delete hcalo;
+//}
+
+//_____________________________________________________________________________
+ void TCaloEvent::AddSimPulse(char* filename, Double_t energy, Int_t samples)
+{
+  //  Adds a DVCS pulse
+
+  if(fNbBlocks==0) return;
+  if(!fRefShapeMC) InitRefShapeMC(filename,samples);
+
+  TARSWave *wave=this->AddWave(samples);
+  for(Int_t i=0;i<samples;i++) wave->SetValue(i,energy*fRefShapeMC[i]);
+    
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::InitRefShapeMC(char * filename, Int_t samples)
+{
+  TString fname=filename;
+  ifstream f(fname.Data());
+  fRefShapeMC=new Float_t[samples];
+  for(Int_t i=0;i<samples;i++) f>>fRefShapeMC[i];
+}
+
+//_____________________________________________________________________________
+ void TCaloEvent::AddNoise(char* filename, UInt_t seed1, UInt_t seed2)
+{
+  //  Warning: Noise is added to the raw TARSWave, not the pedestal-substracted
+  //one. This means you need to add noise first and then substract the pedestal. 
+  //The opposite doesn't work as the pedestal-sustracted wave is a different one.
+  //In any case, as this method is to be use with MC data (no pedestal) this is
+  //probably irrelevant.
+
+
+  if(fNbBlocks==0) return;
+  if(!fNoiseHisto) InitNoise(filename,seed1,seed2);
+
+  Int_t timemax=10000;
+  Int_t samples=((TARSWave*)fARSWaves->UncheckedAt(0))->GetNbSamples();
+
+  fNoiseTime=Int_t((timemax-2.*samples)*fRan->Rndm())+samples;
+  
+  Int_t nbblocks=fgGeometry.GetNBlocks();
+  Bool_t noise[nbblocks];
+  for(Int_t i=0;i<nbblocks;i++) noise[i]=kFALSE;
+  for(Int_t j=0;j<fNbBlocks;j++){        
+    //  fNoiseTime=1000;
+    TCaloBlock *block=(TCaloBlock*)fCaloBlocks->UncheckedAt(j);
+    TARSWave *wave=(TARSWave*)fARSWaves->UncheckedAt(j);
+    for(Int_t i=0;i<samples;i++){
+      Double_t val=wave->GetArray()->GetValue(i)+fNoiseHisto[block->GetBlockNumber()][fNoiseTime+i];
+      //     wave->SetValue(i,wave->GetArray()->GetValue(i)+fNoiseHisto[block->GetBlockNumber()][fNoiseTime+i]);
+      wave->SetValue(i,val);
+      //     Double_t dum=wave->GetArray()->GetValue(i);
+      //cout<<dum<<endl;
+    }
+    noise[block->GetBlockNumber()]=kTRUE;
+    block->Erase("");
+    block->SetBlockEnergy((wave->GetArray()->GetIntegral(25,85))/(-12836.3));   }
+  for(Int_t j=0;j<nbblocks;j++){
+    if(noise[j]==kFALSE){
+      TCaloBlock *block=AddBlock(j);
+      TARSWave *wave=AddWave(samples);
+      for(Int_t i=0;i<samples;i++){
+	wave->SetValue(i,fNoiseHisto[j][fNoiseTime+i]);
+      }
+      block->SetBlockEnergy((wave->GetArray()->GetIntegral(25,85))/(-12836.3));    }
+  }
+}
+
+//_____________________________________________________________________________
+void TCaloEvent::InitNoise(char* filename, UInt_t seed1, UInt_t seed2)
+{
+
+  TString fname=filename;
+  if(!fRan) {
+    fRan=new TRandom2();
+    fRan->SetSeed(seed1);
+  }
+  ifstream f(fname.Data());
+  fNoiseHisto=new Double_t*[fgGeometry.GetNBlocks()];
+  for(Int_t i=0;i<fgGeometry.GetNBlocks();i++){
+    Int_t blocknb;
+    f>>blocknb;
+    fNoiseHisto[i/11+12*(i%11)]=new Double_t[10000];
+    for(Int_t j=0;j<10000;j++){
+      Double_t val;
+      f>>val;
+      //cout<<i/11+12*(i%11)<<endl;
+      fNoiseHisto[i/11+12*(i%11)][j]=val;
+    }
+  }
+}
+
+//_____________________________________________________________________________
+ void TCaloEvent::Print(char* opt)
+{
+  //    Output on screen: number of blocks, list of blocks with
+  //corresponding energy, number of clusters in the event.
+
+  cout<<"===================================================="<<endl;
+  cout<<"Number of blocks : "<<fNbBlocks<<endl;
+  for(Int_t i=0;i<fNbBlocks;i++){
+    TCaloBlock* block = (TCaloBlock*)fCaloBlocks->UncheckedAt(i);
+    Int_t blocknb=block->GetBlockNumber();
+    cout<<"Block "<<blocknb<<" (column "<<fgGeometry.GetBlockX(blocknb);
+    cout<<", row "<<fgGeometry.GetBlockY(blocknb);
+    cout<<") : Energy="<<block->GetBlockEnergy()<<endl;
+  }
+  cout<<endl;
+  cout<<"_____________________________________________________"<<endl;
+  cout<<"Number of clusters : "<<fNbClusters<<endl;
+  cout<<endl;
+
+}
+
+//_____________________________________________________________________________
+Int_t TCaloEvent::Decode(int * buf2)
+{
+  int pos=0;
+  //  TCanvas c;
+  //TARSBase * base = new TARSBase;
+  Clear();
+  if (buf2[0]==0x0deb0000)
+    {
+
+      fLogicType=buf2[1];
+      //  cout<<"type"<<fLogicType<<endl;
+    }
+  while ((pos<10)&&(buf2[pos]!=0xfade))
+    pos++;
+  int * buf=buf2+pos;
+  TARSWave * w;
+  TCaloBlock * bl;
+  //base->SetPedestalProfileFile("initdata/prof-09-03-03.root");
+  int arsl=128/2+3;//base->GetNbSamples()/2+3;
+  int n=0,skip=0;
+  if (buf!=0)
+    {
+      if (buf[0]==0xfade)
+	{
+	  //cout<<hex<<buf[0]<<endl;
+	  //cout<<"trigger"<<endl;
+	  fCaloTrigger->Decode(buf);
+	  //cout<<"Fin trigger"<<endl;
+	  //cout<<hex<<buf[94]<<endl;
+	  //for(int i=-5;i<5;i++)
+	    //   cout<<i<<" "<<hex<<buf[94+i]<<dec<<endl;
+	  while (buf[93+arsl*n+skip]==0xcafe&&(n<132))
+	    {
+	      //cout<<" value n :"<<n<<endl;
+	      int res=-9999999;
+	    //#ifdef DEBUG
+	       
+	    //#endif
+	      //cout<<"AddWave"<<endl;
+	      //if (n<132)
+	      //cout<<hex<<buf[93+arsl*n+skip]<<" "<<buf[94+arsl*n+skip]<<endl;
+	      //cout<<"block number : "<<dec<<(buf[94+arsl*n+skip]&0x000000ff)<<endl;
+	    bl=AddBlock(buf[94+arsl*n+skip]&0x000000ff);
+	    // cout<<dec<<"AddBlock done"<<endl;
+	    w=AddWave(128);
+	    res=w->Decode(&buf[93+arsl*n+skip]);
+	    //  cout<<hex<<buf[93+arsl*n+skip]<<dec<<" "<<93+arsl*n+skip <<" "<<"result ARS :"<<res<<endl;
+	    //   cout<<dec<<"res =" <<res<<endl;
+	    if (res>-1)
+	      //w->SubstractPedestal(buf[94+arsl*n]);
+	      //	  bl->SetBlockEnergy(w->GetArray()->GetIntegral());
+	      // w->DrawRaw(&c);
+	      n++;
+	    else 
+	      {
+			cout<<"bad ARS "<<skip<<" "<<bl->GetBlockNumber()<<endl;
+		       	for(int o=-1;o<=10;o++)
+		 cout<<dec<<o<<":"<<hex<<buf[93+arsl*n+skip+o]<<endl;;
+		for(int si=0;((si<4)&&(buf[93+arsl*n+skip]!=0xcafe));si++)
+		  {
+		    cout<<"si:"<<si<<endl;
+		    skip++;
+		  }
+		cout<<"bad ARS "<<skip<<" "<<bl<<endl;
+		//	cout<<"bad ARS "<<skip<<" "<<bl<<endl;
+	
+	      }
+	    }
+	
+	  if (buf[93+arsl*n+skip]==0xca115100)
+	    {
+	      //  cout<<buf[93+arsl*n+skip]<<" "<<buf[93+arsl*n+skip+1]<<endl;
+	      SetScaler(0,buf[93+arsl*n+skip+1]);
+	    }
+	  if (buf[93+arsl*n+skip]==0xcfd)
+	    {
+	      	      //for (int i=-5;i<5;i++)
+	      //{
+	      //  cout<<dec<<i<<hex<<buf[93+arsl*n+skip+i]<<endl;
+	      //	}
+	      //  cout<<buf[93+arsl*n+skip]<<" "<<buf[93+arsl*n+skip+1]<<endl;
+	      UInt_t value;
+	      // cout<<"cfd ?"<<hex<<buf[93+arsl*n+skip];
+ 	      UInt_t start=93+arsl*n+skip+1;
+	      for (int i=0;i<4;i++)
+		{
+		  //  cout<<hex<<buf[start+3*i]<<" "<<buf[start+3*i+1]<<" "<<(buf[start+3*i+2])<<endl;
+
+
+		  		  fDTScalers[i]=buf[start+3*i]*pow(2.,32)+buf[start+3*i+1]*pow(2.,16)+buf[start+3*i+2];
+
+
+  //		  SetScaler(i,value);
+		  //		    cout<<i<<" value n :"<<hex<<fDTScalers[i]<<endl;
+		}
+	    }
+	  //cout<<" value n :"<<n<<endl;
+	  return n;
+	}
+      else return -1;
+    }
+}
+
+Int_t TCaloEvent::DecodeZS(int * buf)
+{
+  //  TCanvas c;
+  //TARSBase * base = new TARSBase;
+  int board,nbchan,chan,width;
+  Clear();
+  TARSWave * w;
+  TCaloBlock * bl;
+  
+  //base->SetPedestalProfileFile("initdata/prof-09-03-03.root");
+  int arsl=128/2+3;//base->GetNbSamples()/2+3;
+  int n=0,skip=0;
+  if (buf!=0)
+    {
+      //cout<<hex<<buf[0]<<endl;
+      if (buf[0]==0x000fade2)
+	{
+	  //cout<<"trigger"<<endl;
+	  fCaloTrigger->Decode(buf);
+	  //cout<<"Fin trigger"<<endl;
+	  //cout<<hex<<buf[93]<<endl;
+	  //for(int i=-5;i<5;i++)
+	  //cout<<i<<" "<<hex<<buf[94+i]<<endl;
+	  //cout<<"head"<<hex<<(buf[93+skip]&0x0000ffff)<<endl;
+	  while ((buf[93+skip]&0x0000ffff)==0xcafe)
+	    {
+	      board=(buf[93+skip]&0x00ff0000)>>16;
+	      nbchan=(buf[93+skip+1]&0x01f0)>>4;
+	      //  cout<<board<<" "<<nbchan<<endl;
+	      width=buf[93+skip+2];
+	      //cout<<nbchan<<endl;
+	      for(int i=0;i<nbchan;i++)
+		{
+		  w=AddWave(width);
+		  chan=w->Decode(&buf[93+skip+3+width/2*i],width);
+		  AddBlock(chan+16*(board-1));
+		}
+	      skip+=width/2*nbchan+3;
+	      //cout<< nbchan<<" "<<width<<endl;
+	      //cout<<
+	    }
+	  if (buf[93+arsl*n+skip]==0xca115100)
+	    {
+	      //  cout<<buf[93+arsl*n+skip]<<" "<<buf[93+arsl*n+skip+1]<<endl;
+	      SetScaler(0,buf[93+arsl*n+skip+1]);
+	    }
+	  return n;
+	}
+      else return -1;
+    }
+}
+
+
+ Double_t TCaloEvent::GetDeadTime(int i)
+{
+  if ((i<4)&&(i>0)&&(fDTScalers[0]!=0))
+    return (fDTScalers[i]/fDTScalers[0]);
+  else
+    return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

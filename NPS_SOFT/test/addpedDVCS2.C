@@ -1,0 +1,17 @@
+{
+  gSystem->Load("libDVCS.so");
+  Int_t run=8333;
+  //  TFile *f=new TFile("/adaqfs/home/adaq/dvcs/carlos/pedestals_7766.root");
+  TFile *f=new TFile("./pedestals_8333.root");
+  TProfile *calo[208];
+  for(Int_t i=0;i<208;i++) calo[i]=(TProfile*)f->Get(Form("prof_%d",i));
+  TDVCSDB *db=new TDVCSDB("dvcs","clrlpc",3306,"munoz","");
+  Float_t *pedcalo[208];
+  for(Int_t i=0;i<208;i++){
+    pedcalo[i]=new Float_t[128];
+    for(Int_t j=0;j<128;j++) pedcalo[i][j]=calo[i]->GetBinContent(j+1);
+    TString name("CALO_calib_ARSPed");name+=i;
+    db->AddEntry_f(name.Data(),run,999999,pedcalo[i],"Automatic entry of pedestals");
+    //    cout<<pedcalo[i][50]<<endl;
+  }
+}

@@ -1,0 +1,16 @@
+{
+  gSystem.Load("libDVCS.so");
+  gdvcs->SetWF(0);
+  gdvcs->SetRun(8853);
+  gdvcs->ForceUpdate();
+  TDVCSEvent e;
+  e.GetGeometry()->SetRun(8853);
+  e.GetGeometry()->InitDB();
+  cout<<e.GetGeometry()->GetCaloDist()<<endl;
+  TDVCSDB *db=new TDVCSDB("dvcs","clrlpc",3306,"munoz","");
+  TString name4=("CALO_geom_Dist");
+  db->GetServer()->Query("select * from CALO_geom_Dist;");
+  Float_t *coef=db->GetEntry_f(name4.Data(),8853);
+  cout<<coef[0]<<endl;
+  cout<<db->GetLastValueId("CALO_geom_Dist",8853)<<endl;
+}

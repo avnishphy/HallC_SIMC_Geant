@@ -1,0 +1,4 @@
+# run_batch.mac
+/run/initialize
+# replace N by your desired number when calling: /control/execute run_batch.mac
+/run/beamOn N

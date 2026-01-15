@@ -1,0 +1,78 @@
+{
+ gEnv->SetValue("Root.Html.Root","http://root.cern.ch/root/html");
+ THtml html;
+
+// gSystem.Load("libTARSArray.so");
+// gSystem.Load("libTARSBase.so");
+// gSystem.Load("libTARSBlock.so");
+// gSystem.Load("libTARSCalibration.so");
+// gSystem.Load("libTARSConst.so");
+// gSystem.Load("libTARSParameters.so");
+// gSystem.Load("libTARSWave.so");
+// gSystem.Load("libTBool.so");
+// gSystem.Load("libTCaloBase.so");
+// gSystem.Load("libTCaloBlock.so");
+// gSystem.Load("libTCaloCalibration.so");
+// gSystem.Load("libTCaloCluster.so");
+// gSystem.Load("libTCaloEvent.so");
+// gSystem.Load("libTCaloEventXY.so");
+// gSystem.Load("libTCaloGeometry.so");
+// gSystem.Load("libTCaloParameters.so");
+// gSystem.Load("libTCaloTrigger.so");
+// gSystem.Load("libTDoubleArray.so");
+// gSystem.Load("libTDouble.so");
+// gSystem.Load("libTDVCSBase.so");
+// gSystem.Load("libTDVCSDB.so");
+// gSystem.Load("libTDVCSEventMC.so");
+// gSystem.Load("libTDVCSEvent.so");
+// gSystem.Load("libTDVCSGeometry.so");
+// gSystem.Load("libTDVCSParameters.so");
+// gSystem.Load("libTFloatArray.so");
+// gSystem.Load("libTFloat.so");
+// gSystem.Load("libTGCalo.so");
+// gSystem.Load("libTGDVCS.so");
+// gSystem.Load("libTGReplay.so");
+// gSystem.Load("libTHCalo.so");
+// gSystem.Load("libTHPA.so");
+// gSystem.Load("libTInt.so");
+// gSystem.Load("libTPABase.so");
+// gSystem.Load("libTPABlockGeom.so");
+// gSystem.Load("libTPABlock.so");
+// gSystem.Load("libTPABlockTemp.so");
+// gSystem.Load("libTPAGeometry.so");
+// gSystem.Load("libTPACalibration.so");
+// gSystem.Load("libTPAEvent.so");
+// gSystem.Load("libTPALine.so");
+// gSystem.Load("libTPAParameters.so");
+// gSystem.Load("libTPAPlane.so");
+// gSystem.Load("libTPASimBlock.so");
+// gSystem.Load("libTPATrigger.so");
+// gSystem.Load("libTShortArray.so");
+// gSystem.Load("libTShort.so");
+// gSystem.Load("libTVLine.so");
+// gSystem.Load("libTVPlane.so");
+// gSystem.Load("libTVBlockTemp.so");
+// gSystem.Load("libTVGeometry.so");
+// gSystem.Load("libTVCalibration.so");
+// gSystem.Load("libTVParameters.so");
+// gSystem.Load("libTVBase.so");
+// gSystem.Load("libTVSimBlock.so");
+// gSystem.Load("libTVBlockGeom.so");
+// gSystem.Load("libTVBlock.so");
+// gSystem.Load("libTVTrigger.so");
+// gSystem.Load("libTVEvent.so");
+
+
+html.MakeAll(kTRUE,"THR*");
+ html.MakeAll(kTRUE,"TARS*");
+ html.MakeAll(kTRUE,"TDVCS*");
+ html.MakeAll(kTRUE,"TPA*");
+ html.MakeAll(kTRUE,"TCalo*");
+ // html.MakeAll(kTRUE,"TShor*");
+ // html.MakeAll(kTRUE,"TB*");
+ // html.MakeAll(kTRUE,"TFloa*");
+ // html.MakeAll(kTRUE,"TV*");
+ // html.MakeAll(kTRUE,"TG*");
+ html.MakeAll(kTRUE,"THR*");
+
+}

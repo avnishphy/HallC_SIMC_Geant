@@ -1,0 +1,68 @@
+#______________________________________________________
+#  
+#   Makefile for DVCS Soft
+#   Author: G.Gavalian
+#______________________________________________________
+
+ROOTCFLAGS    = $(shell root-config --cflags)
+ROOTLIBS      = $(shell root-config --libs)
+ROOTGLIBS     = $(shell root-config --glibs)
+#
+#
+#  Setting up directories
+#
+
+ifndef DVCS_DIR
+#@echo "ERROR"
+DVCS_DIR = ../
+endif
+locallib   = $(DVCS_DIR)/lib
+localbin   = $(DVCS_DIR)/bin
+localslib  = $(DVCS_DIR)/slib
+localobj   = $(DVCS_DIR)/obj
+
+#------------------------------------------------------
+#  Proton Array CLASSES
+#______________________________________________________
+
+ALL_FILES_CXX  = $(wildcard T*.cxx)
+ALL_FILES_DICT = $(ALL_FILES_CXX:.cxx=Dict.cxx)
+ALL_OBJ        = $(ALL_FILES_CXX:.cxx=.o) $(ALL_FILES_DICT:.cxx=.o) swap_util.o evio.o swapped_intcpy.o
+ALL_OBJECTS    = $(addprefix $(localobj)/,$(ALL_OBJ))
+ALL_LIBNAME    = libDVCSoft.so
+#
+
+
+
+show:
+	@echo $(ALL_OBJECTS)
+
+all: $(ALL_OBJECTS)
+	@test -d $(localslib) || mkdir -p $(localslib)
+	$(CXX) -shared -o $(localslib)/$(ALL_LIBNAME) $(ALL_OBJECTS)
+
+
+#===============================================================
+#  General Rules 
+
+$(localobj)/%.o:%.cc
+	@echo Compiling File $<
+	@test -d $(localobj) || mkdir -p $(localobj)
+	$(CXX) $(CXXFLAGS) -c $< $(ROOTCFLAGS) -I. -I../Physics -o $@
+$(localobj)/%.o:%.c
+	@echo Compiling File $<
+	@test -d $(localobj) || mkdir -p $(localobj)
+	$(CC) $(CXXFLAGS) -c $< $(ROOTCFLAGS) -I. -I../Physics -o $@
+$(localobj)/%.o:%.cxx
+	@echo Compiling File $<
+	@test -d $(localobj) || mkdir -p $(localobj)
+	$(CXX) $(CXXFLAGS) -c $< $(ROOTCFLAGS) -I. -I../Physics -o $@
+%.o:%.f
+	@echo Compiling FORTRAN FILE
+	@test -d $(localobj) || mkdir -p $(localobj)
+	g77 -c $<
+T%Dict.cxx: T%.h
+	@test -d $(localobj) || mkdir -p $(localobj)
+	$(ROOTSYS)/bin/rootcint -f $(@:DictDict.cxx=Dict.cxx) -c $(INCLUDES) $(<:Dict.h=.h) 
+
+	

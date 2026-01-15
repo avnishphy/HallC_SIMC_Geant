@@ -1,0 +1,79 @@
+Main.o Main.d : Main.cxx /apps/gcc/3.0.4/include/g++-v3/fstream \
+  /apps/gcc/3.0.4/include/g++-v3/bits/std_fstream.h \
+  /apps/gcc/3.0.4/include/g++-v3/iostream \
+  /apps/gcc/3.0.4/include/g++-v3/bits/std_iostream.h TShort.h \
+  /u/home/camsonne/root/include/TObject.h \
+  /u/home/camsonne/root/include/Rtypes.h \
+  /u/home/camsonne/root/include/RConfig.h \
+  /u/home/camsonne/root/include/RVersion.h \
+  /u/home/camsonne/root/include/DllImport.h \
+  /u/home/camsonne/root/include/Rtypeinfo.h \
+  /u/home/camsonne/root/include/TGenericClassInfo.h \
+  /u/home/camsonne/root/include/Varargs.h \
+  /u/home/camsonne/root/include/TStorage.h \
+  /u/home/camsonne/root/include/Riosfwd.h \
+  /apps/gcc/3.0.4/include/g++-v3/iosfwd \
+  /u/home/camsonne/root/include/TBuffer.h \
+  /u/home/camsonne/root/include/Bytes.h \
+  /u/home/camsonne/root/include/Byteswap.h TBlock.h TARSArray.h \
+  TARSWave.h TARSBase.h TARSParameters.h TDouble.h TDoubleArray.h \
+  /u/home/camsonne/root/include/TClonesArray.h \
+  /u/home/camsonne/root/include/TObjArray.h \
+  /u/home/camsonne/root/include/TSeqCollection.h \
+  /u/home/camsonne/root/include/TCollection.h \
+  /u/home/camsonne/root/include/TIterator.h \
+  /u/home/camsonne/root/include/TString.h \
+  /u/home/camsonne/root/include/TMath.h \
+  /u/home/camsonne/root/include/TRefCnt.h \
+  /u/home/camsonne/root/include/TH1.h \
+  /u/home/camsonne/root/include/TVirtualHistPainter.h \
+  /u/home/camsonne/root/include/TClass.h \
+  /u/home/camsonne/root/include/TDictionary.h \
+  /u/home/camsonne/root/include/TNamed.h \
+  /u/home/camsonne/root/include/TList.h \
+  /u/home/camsonne/root/include/Property.h \
+  /u/home/camsonne/root/include/TAxis.h \
+  /u/home/camsonne/root/include/TAttAxis.h \
+  /u/home/camsonne/root/include/Gtypes.h \
+  /u/home/camsonne/root/include/Htypes.h \
+  /u/home/camsonne/root/include/TArrayD.h \
+  /u/home/camsonne/root/include/TArray.h \
+  /u/home/camsonne/root/include/THashList.h \
+  /u/home/camsonne/root/include/TAttLine.h \
+  /u/home/camsonne/root/include/TAttFill.h \
+  /u/home/camsonne/root/include/TAttMarker.h \
+  /u/home/camsonne/root/include/TArrayC.h \
+  /u/home/camsonne/root/include/TArrayS.h \
+  /u/home/camsonne/root/include/TArrayF.h \
+  /u/home/camsonne/root/include/TPad.h \
+  /u/home/camsonne/root/include/TVirtualPad.h \
+  /u/home/camsonne/root/include/TAttPad.h \
+  /u/home/camsonne/root/include/TVirtualX.h \
+  /u/home/camsonne/root/include/TAttText.h \
+  /u/home/camsonne/root/include/GuiTypes.h \
+  /u/home/camsonne/root/include/Buttons.h \
+  /u/home/camsonne/root/include/TQObject.h \
+  /u/home/camsonne/root/include/TCanvas.h \
+  /u/home/camsonne/root/include/TAttCanvas.h \
+  /u/home/camsonne/root/include/TCanvasImp.h \
+  /u/home/camsonne/root/include/TButton.h \
+  /u/home/camsonne/root/include/TRef.h \
+  /u/home/camsonne/root/include/TMatrix.h \
+  /u/home/camsonne/root/include/TVector.h \
+  /u/home/camsonne/root/include/TError.h \
+  /u/home/camsonne/root/include/TMatrixUtils.h TARSConst.h \
+  TARSCalibration.h TBlockArray.h \
+  /u/home/camsonne/root/include/TObjectTable.h \
+  /u/home/camsonne/root/include/TTree.h \
+  /u/home/camsonne/root/include/TBranch.h \
+  /u/home/camsonne/root/include/TStringLong.h \
+  /u/home/camsonne/root/include/TCut.h \
+  /u/home/camsonne/root/include/TArrayI.h \
+  /u/home/camsonne/root/include/TVirtualTreePlayer.h \
+  /u/home/camsonne/root/include/TFile.h \
+  /u/home/camsonne/root/include/TDirectory.h \
+  /u/home/camsonne/root/include/TDatime.h \
+  /u/home/camsonne/root/include/TUUID.h \
+  /u/home/camsonne/root/include/TInetAddress.h \
+  /u/home/camsonne/root/include/TCache.h \
+  /u/home/camsonne/root/include/TProcessID.h

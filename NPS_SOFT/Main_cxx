@@ -1,0 +1,110 @@
+#include <fstream>
+#include <iostream>
+
+#ifndef __TShort__
+#include "TShort.h"
+#endif
+
+#ifndef __TBlock__
+#include "TBlock.h"
+#endif
+
+#ifndef __TARSArray__
+#include "TARSArray.h"
+#endif
+
+#ifndef __TARSWave__
+#include "TARSWave.h"
+#endif
+
+#ifndef ROOT_TObject
+#include "TObject.h"
+#endif
+
+#ifndef ROOT_TCanvas
+#include "TCanvas.h"
+#endif
+
+#ifndef ROOT_TObjectTable
+#include "TObjectTable.h"
+#endif
+
+#ifndef ROOT_TTree
+#include "TTree.h"
+#endif
+
+#ifndef ROOT_TFile
+#include "TFile.h"
+#endif
+
+#ifndef ROOT_TProcessID
+#include "TProcessID.h"
+#endif
+
+
+int main(int argc,char* argv[])
+{
+  TFile tf("tree.root","RECREATE");
+  TTree t("t","My tree");
+
+  t.SetAutoSave(1000000000);
+
+  Int_t nev;
+  //  TCaloEvent *bl = new TCaloEvent();
+  TARSArray *bl = new TARSArray(128);
+  TARSWave* wave=new TARSWave();
+  cout<<"test1"<<endl;
+  t.Branch("bl","TARSArray",&bl,32000,1);
+  cout<<"test2"<<endl;
+  
+  nev=1000;
+    
+  for(Int_t j=0;j<nev;j++){
+    
+    if(j%10000==0) cout<<j<<" "<<TProcessID::GetObjectCount()<<endl;
+    
+    Int_t ObjectNumber=TProcessID::GetObjectCount();
+    
+    if(j%100000==0) {
+      gObjectTable->Print();
+    }
+    
+    wave=bl->AddWave(128);
+    TARSWave * block = bl->GetWave(0);
+    for(Int_t i=0;i<64;i++) {
+      Short_t val=i;
+      wave->SetValue(i,val);
+      wave->SetValue(i+64,64-val);
+    }
+    if(j==100) {
+      cout<<"On ajoute un deuxieme block!!"<<endl;
+      wave=bl->AddWave(128);
+     for(Int_t i=0;i<64;i++) {
+      Short_t val=i;
+      wave->SetValue(i,val);
+      wave->SetValue(i+64,64-val);
+    }
+      }
+    t.Fill();
+    bl->Reset();
+    //	bl->Clear();
+    //caloev->Reset();
+    TProcessID::SetObjectCount(ObjectNumber);
+  }
+  //  tf.Write("0",TObject::kOverwrite);
+  tf.Write();
+  t.Print();
+  tf.Close();
+}
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,60 @@
+//---------------------------------------------
+// rootlogon Macro to load created libraries at startup of root
+// The library location is given by enviromental variable
+// DVCS_DIR
+//
+// Author : G.Gavalian
+//---------------------------------------------
+
+{
+
+  TString fPath = gSystem->Getenv("DVCS_DIR");
+  fPath += "/slib/";
+  
+  TString fLibName = fPath.Data();
+  //-----------------------------------
+  fLibName += "libPhysics.so";
+  gSystem->Load("libPhysics.so");
+  //-----------------------------------
+  fLibName  = fPath.Data();
+  fLibName += "libTWrappers.so";
+  cout << "Loading library ==>>> " << fLibName.Data() << endl;
+  gSystem->Load(fLibName.Data());
+  //-----------------------------------
+  fLibName  = fPath.Data();
+  fLibName += "libTARSlib.so";
+  cout << "Loading library ==>>> " << fLibName.Data() << endl;
+  gSystem->Load(fLibName.Data());
+  //-----------------------------------
+  fLibName  = fPath.Data();
+  fLibName += "libTPAlib.so";
+  cout << "Loading library ==>>> " << fLibName.Data() << endl;
+  gSystem->Load(fLibName.Data());
+  //-----------------------------------
+  fLibName  = fPath.Data();
+  fLibName += "libTCalolib.so";
+  cout << "Loading library ==>>> " << fLibName.Data() << endl;
+  gSystem->Load(fLibName.Data());
+ //-----------------------------------
+  fLibName  = fPath.Data();
+  fLibName += "libTDVCSlib.so";
+  cout << "Loading library ==>>> " << fLibName.Data() << endl;
+  gSystem->Load(fLibName.Data());
+  
+ //-----------------------------------
+  //  fLibName  = fPath.Data();
+  //  fLibName += "libTHAlib.so";
+  //  cout << "Loading library ==>>> " << fLibName.Data() << endl;
+  //  gSystem->Load(fLibName.Data());
+  
+  
+
+  cout << endl << "Finished Loading libraries " << endl;
+  // gSystem->Load("libTWrappers.so");
+  //  gSystem->Load("libTARSlib.so");
+  //  gSystem->Load("libTCalolib.so");
+  //  gSystem->Load("libTPAlib.so");
+  //  gSystem->Load("libTDVCSlib.so");
+  //gSystem->Load("libTHalib.so");
+
+}

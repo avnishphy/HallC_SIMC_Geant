@@ -1,0 +1,200 @@
+{
+  //  gSystem->Load("./libDVCS.so");
+  //Connecting to a database in the server
+  TDVCSDB *db=new TDVCSDB("dvcs","server",3306,"user","");
+
+  //Creatinging a tables in the database
+
+  // db->CreateTable("CALO_geom_NRow","int",1);//"CreateTable" only once to create table. Once created, use "AddEntry" only.
+  Int_t *rows=new Int_t[1]; rows[0]=36;
+  db->AddEntry_i("CALO_geom_NRow",0,999999,rows,"Pseudo Run Number");
+  
+  // db->CreateTable("CALO_geom_NCol","int",1);
+  Int_t *columns=new Int_t[1]; columns[0]=30;
+  db->AddEntry_i("CALO_geom_NCol",0,999999,columns,"Pseudo Run Number");
+  
+  // X coordinates of each crystal: 1, 3, 5... cm
+  // db->CreateTable("CALO_geom_X","double",1080);
+  Double_t *x=new Double_t[1080];
+  // for(Int_t i=0;i<1080;i++) x[i]=i/36*2+1.;
+  for(Int_t i=0;i<1080;i++) x[i] = i/36*21.63 + 0.5*21.63;//mm//One block size : 20.5mm(crystal) + 2*65*10e-3mm(2 VM2000 wrapper thickness) + 1mm (carbon material)
+  db->AddEntry_d("CALO_geom_X",0,999999,x,"Pseudo Run Number");
+  
+  // Y coordinates of each crystal: 1, 3, 5... cm
+  // db->CreateTable("CALO_geom_Y","double",1080);
+  Double_t *y=new Double_t[1080];
+  // for(Int_t i=0;i<1080;i++) y[i]=i%36*2+1.;
+  for(Int_t i=0;i<1080;i++) y[i] = i%36*21.63 + 0.5*21.63;//mm
+  db->AddEntry_d("CALO_geom_Y",0,999999,y,"Pseudo Run Number");
+  
+  // db->CreateTable("CALO_geom_X0","double",1);
+  // Double_t *xcenter=new Double_t[1]; xcenter[0]=30.;//cm
+  Double_t *xcenter=new Double_t[1]; xcenter[0]=324.45;//mm // x-center of 30 blocks
+  db->AddEntry_d("CALO_geom_X0",0,999999,xcenter,"Pseudo Run Number");
+
+  // db->CreateTable("CALO_geom_Y0","double",1);
+  // Double_t *ycenter=new Double_t[1]; ycenter[0]=36.;//cm
+  Double_t *ycenter=new Double_t[1]; ycenter[0]=389.34;//mm // y-center of 30 blocks
+  db->AddEntry_d("CALO_geom_Y0",0,999999,ycenter,"Pseudo Run Number");
+
+  // db->CreateTable("CALO_geom_Roll","double",1);
+  Double_t *roll=new Double_t[1]; roll[0]=0.;//Ideal position
+  db->AddEntry_d("CALO_geom_Roll",0,999999,roll,"Pseudo Run Number");
+
+  // db->CreateTable("CALO_geom_Pitch","double",1);
+  Double_t *pitch=new Double_t[1]; pitch[0]=0.;//Ideal position
+  db->AddEntry_d("CALO_geom_Pitch",0,999999,pitch,"Pseudo Run Number");
+
+  // db->CreateTable("CALO_calib_coef","double",1080);
+  Double_t *coef=new Double_t[1080];
+  for(Int_t i=0;i<1080;i++) coef[i]=1.;//Pseudo Run Number
+  db->AddEntry_d("CALO_calib_coef",0,999999,coef,"Pseudo Run Number");
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //Variables depending on run
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+  // db->CreateTable("CALO_geom_Yaw","double",1);
+  Double_t *angle=new Double_t[1]; 
+  angle[0] = 11.7*TMath::DegToRad();//11.7 deg
+  db->AddEntry_d("CALO_geom_Yaw",0,0,angle,"Pseudo Run Number");//("name", min_run_#, man_run_#, value, "description")
+
+  angle[0] = 14.7*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 1, 1, angle, "Pseudo Run Number");
+  angle[0] = 16.2*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 2, 2, angle, "Pseudo Run Number");
+  angle[0] = 10.3*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 3, 3, angle, "Pseudo Run Number");
+  angle[0] = 12.4*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 4, 4, angle, "Pseudo Run Number");
+  angle[0] = 20.2*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 5, 5, angle, "Pseudo Run Number");
+  angle[0] = 21.7*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 6, 6, angle, "Pseudo Run Number");
+  angle[0] = 16.6*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 7, 7, angle, "Pseudo Run Number");
+  angle[0] = 13.8*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 8, 8, angle, "Pseudo Run Number");
+  angle[0] = 17.8*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 9, 9, angle, "Pseudo Run Number");
+  angle[0] = 19.8*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 10, 10, angle, "Pseudo Run Number");
+  angle[0] = 17.2*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 11, 11, angle, "Pseudo Run Number");
+  angle[0] = 6.3*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 12, 12, angle, "Pseudo Run Number");
+  angle[0] = 9.2*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 13, 13, angle, "Pseudo Run Number");
+  angle[0] = 10.6*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 14, 14, angle, "Pseudo Run Number");
+  angle[0] = 6.3*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 15, 15, angle, "Pseudo Run Number");
+  angle[0] = 7.9*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 16, 16, angle, "Pseudo Run Number");
+  angle[0] = 8.0*TMath::DegToRad();
+  db->AddEntry_d("CALO_geom_Yaw", 17, 18, angle, "Pseudo Run Number");
+
+  // db->CreateTable("CALO_geom_Dist","double",1);
+  Double_t *distance=new Double_t[1];
+  distance[0] = 3000.;//mm //3m
+  db->AddEntry_d("CALO_geom_Dist", 0, 2, distance, "Pseudo Run Number");
+
+  distance[0] = 4000.;
+  db->AddEntry_d("CALO_geom_Dist", 3, 3, distance, "Pseudo Run Number");
+  distance[0] = 3000.;
+  db->AddEntry_d("CALO_geom_Dist", 4, 11, distance, "Pseudo Run Number");
+  distance[0] = 6000.;
+  db->AddEntry_d("CALO_geom_Dist", 12, 12, distance, "Pseudo Run Number");
+  distance[0] = 4000.;
+  db->AddEntry_d("CALO_geom_Dist", 13, 14, distance, "Pseudo Run Number");
+  distance[0] = 6000.;
+  db->AddEntry_d("CALO_geom_Dist", 15, 15, distance, "Pseudo Run Number");
+  distance[0] = 4000.;
+  db->AddEntry_d("CALO_geom_Dist", 16, 18, distance, "Pseudo Run Number");
+
+  ////////////////////////////////////////////////////////////////////////
+  //Beam parameters
+  ////////////////////////////////////////////////////////////////////////
+
+  // db->CreateTable("BEAM_param_Energy", "double",1);
+  Double_t *BeamEnergy = new Double_t[1]; 
+  BeamEnergy[0] = 6.6;//GeV
+  db->AddEntry_d("BEAM_param_Energy", 0, 0, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 8.8;
+  db->AddEntry_d("BEAM_param_Energy", 1, 1, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 11;
+  db->AddEntry_d("BEAM_param_Energy", 2, 2, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 8.8;
+  db->AddEntry_d("BEAM_param_Energy", 3, 3, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 11;
+  db->AddEntry_d("BEAM_param_Energy", 4, 4, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 8.8;
+  db->AddEntry_d("BEAM_param_Energy", 5, 5, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 11;
+  db->AddEntry_d("BEAM_param_Energy", 6, 7, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 6.6;
+  db->AddEntry_d("BEAM_param_Energy", 8, 8, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 8.8;
+  db->AddEntry_d("BEAM_param_Energy", 9, 9, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 11;
+  db->AddEntry_d("BEAM_param_Energy", 10, 11, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 6.6;
+  db->AddEntry_d("BEAM_param_Energy", 12, 12, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 8.8;
+  db->AddEntry_d("BEAM_param_Energy", 13, 13, BeamEnergy, "Pseudo Run Number");
+  BeamEnergy[0] = 11;
+  db->AddEntry_d("BEAM_param_Energy", 14, 18, BeamEnergy, "Pseudo Run Number");
+
+
+  ////////////////////////////////////////////////////////////////////////
+  //HMS parameters
+  ////////////////////////////////////////////////////////////////////////
+
+  // // db->CreateTable("SIMU_param_HMSangle", "double",1);// for now, it is being calculated in the simulation
+  // Double_t *HMSangel = new Double_t[1]; 
+  // HMSangel[0] = 6.6*TMath::DegToRad();;//
+  // db->AddEntry_d("SIMU_param_HMSangle", 0, 0, HMSangle, "Pseudo Run Number");
+
+  // db->CreateTable("SIMU_param_HMSmomentum", "double",1);
+  Double_t *HMSmomentum = new Double_t[1]; 
+  HMSmomentum[0] = 2.2;//GeV
+  db->AddEntry_d("SIMU_param_HMSmomentum", 0, 0, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 4.4;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 1, 1, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 6.6;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 2, 2, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 2.9;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 3, 3, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 5.1;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 4, 4, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 5.2;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 5, 5, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 7.4;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 6, 6, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 5.9;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 7, 7, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 2.1;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 8, 8, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 4.3;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 9, 9, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 6.5;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 10, 10, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 5.7;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 11, 11, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 1.3;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 12, 12, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 3.5;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 13, 13, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 5.7;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 14, 14, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 3.0;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 15, 15, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 2.9;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 16, 16, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 2.4;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 17, 17, HMSmomentum, "Pseudo Run Number");
+  HMSmomentum[0] = 2.1;
+  db->AddEntry_d("SIMU_param_HMSmomentum", 18, 18, HMSmomentum, "Pseudo Run Number");
+
+}

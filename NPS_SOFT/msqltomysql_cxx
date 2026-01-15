@@ -1,0 +1,768 @@
+#include <fstream>
+#include <iostream>
+#include "TROOT.h"
+#include "TObject.h"
+#include "TDVCSDB.h"
+#include <msql.h>
+
+using namespace std;
+// Function to return an int from MSQL DB
+
+struct titi {     // Decomposition of 32 bit int into four 8 bit int (only first 16 bits taken)
+  unsigned int titi1:4;
+  unsigned int titi2:4;
+  unsigned int titi3:4;
+  unsigned int titi4:4;
+};
+
+struct tata {     // Decomposition of 32 bit int into eight 4 bit int (only first 16 bits taken)
+  unsigned int tata1:2;
+  unsigned int tata2:2;
+  unsigned int tata3:2;
+  unsigned int tata4:2;
+  unsigned int tata5:2;
+  unsigned int tata6:2;
+  unsigned int tata7:2;
+  unsigned int tata8:2;
+};
+
+struct tutu {     // Decomposition of 32 bit int into eight sixteen 1 bit int (only first 16 bits taken)
+  unsigned int tutu1:1;
+  unsigned int tutu2:1;
+  unsigned int tutu3:1;
+  unsigned int tutu4:1;
+  unsigned int tutu5:1;
+  unsigned int tutu6:1;
+  unsigned int tutu7:1;
+  unsigned int tutu8:1;
+  unsigned int tutu9:1;
+  unsigned int tutu10:1;
+  unsigned int tutu11:1;
+  unsigned int tutu12:1;
+  unsigned int tutu13:1;
+  unsigned int tutu14:1;
+  unsigned int tutu15:1;
+  unsigned int tutu16:1;
+};
+
+int GetIntParam(const char* module,const char * detector ,int slot,const char * param)
+{
+  m_result *res;
+  m_row ro=0;
+  int connected,nb;
+  char query[255];
+
+  sprintf (query,"select value from DAQ where modulename='%s' and detector=\'%s\'  and slot=%d AND type='%s'",module,detector,slot,param);
+
+  connected = msqlConnect("adaqs1-ep");
+  msqlSelectDB(connected,"dvcs");
+  msqlQuery(connected,query);
+  res=msqlStoreResult();
+  nb=msqlNumRows(res);
+
+  // Simple error catching...
+
+  if(nb!=1) {
+    printf("ERROR in MSQL query for %s, %s, %d, %s\n",module,detector,slot,param);
+    printf("Number of rows returned should be 1, and it is %d\n",nb);
+    return -666;
+  } else {
+    ro=msqlFetchRow(res);
+    return atoi(ro[0]);
+  }
+
+}
+
+int GetRunNumber()
+{
+  m_result *res;
+  m_row ro=0;
+  int connected,nb;
+  char query[255];
+
+  sprintf (query,"select runNumber from sessions");
+
+  connected = msqlConnect("adaql2");
+  msqlSelectDB(connected,"adaq");
+  msqlQuery(connected,query);
+  res=msqlStoreResult();
+  nb=msqlNumRows(res);
+
+  // Simple error catching...
+
+  if(nb!=1) {
+    printf("ERROR in MSQL query for runNumber\n");
+    printf("Number of rows returned should be 1, and it is %d\n",nb);
+    return -666;
+  } else {
+    ro=msqlFetchRow(res);
+    return atoi(ro[0]);
+  }
+
+}
+
+int GetCodaConfig()
+{
+  m_result *res;
+  m_row ro=0;
+  int connected,nb;
+  char query[255];
+
+  sprintf (query,"select config from sessions");
+
+  connected = msqlConnect("adaql2");
+  msqlSelectDB(connected,"adaq");
+  msqlQuery(connected,query);
+  res=msqlStoreResult();
+  nb=msqlNumRows(res);
+
+  // Simple error catching...
+
+  if(nb!=1) {
+    printf("ERROR in MSQL query for runNumber\n");
+    printf("Number of rows returned should be 1, and it is %d\n",nb);
+    return -666;
+  } else {
+    ro=msqlFetchRow(res);
+    return atoi(ro[0]);
+  }
+
+}
+
+int main(int argc,char* argv[])
+{
+
+  // Idiot proofing function usage
+
+  if (argc!=2) {
+    cout << "Usage:\nmsqltomysql <run number> : Forces run number by hand" << endl;
+    cout << "msqltomysql usemsql      : Uses msql runnumber" << endl;
+    exit(-1);
+  } else if (!atoi(argv[1]) && !(strstr(argv[1],"usemsql") && strlen(argv[1])==7)) {
+    cout << "Usage:\nmsqltomysql <run number> : Forces run number by hand" << endl;
+    cout << "msqltomysql usemsql      : Uses msql runnumber" << endl;
+    exit(-2);
+  }
+
+  Int_t runnumber=-1;
+
+  if (strstr(argv[1],"usemsql")) {
+    runnumber=GetRunNumber();
+    cout << "Getting run number from MSQL database..." << runnumber << endl;
+  } else {
+    runnumber=atoi(argv[1]);
+  }
+
+  // The core of this program
+
+  cout << "Putting MSQL information into MySQL for Run #" << runnumber << endl;
+
+  cout << "Getting CODA config from MSQL: " << codaconfig << endl;
+  
+  // Connection to MySQL database
+
+  TDVCSDB *db=new TDVCSDB("dvcs","clrlpc",3306,"sabatie","");
+
+  //---------------------------------------------------------------------------------//
+  // Summary of MSQL information:
+  //---------------------------------------------------------------------------------//
+  // modulename = {ARS, Trigger, Led}
+
+  // For modulename = Trigger:
+  // type           = {Offset, Pied, Ped0->41, Thres0, Thres1, Act0->5, Mode, Width}
+  // Ped and Act are coded on 32 bits and translated into respectively bytes and bits
+  // before going into the MySQL tables.
+  // Trigger slot/board number is 1
+  // Note: for PA/Veto, there are no Ped0->41
+
+  // For modulename = ARS:
+  // type           = {ND_G, ND0, ND1, ND2, ND3, DAC0->15, Thres}
+
+  // For modulename = Led:
+  // type           = {bias0, bias1, bias2, bias3, status3, freq}
+  //
+  // For modulename = LogicMod (only for calorimeter):
+  // type           = {Param, Freq, Prescale}
+  //---------------------------------------------------------------------------------//
+
+
+
+  // Building some template strings for query items
+
+  TString calodaq="CALO_daq_";
+  TString padaq="PA_daq_";
+  TString trig="Trig_";
+  TString ars="ARS_";
+  TString led="Led_";
+  TString log="LogicMod_";
+
+  TString target="";
+  char *targ;
+
+  Int_t dumint=-1;
+
+  // Start with Trigger stuff
+
+  //*************************************************************************************************//
+  // CALO_daq_Trig_Off
+
+  dumint = GetIntParam("Trigger","Calo",1,"Offset");
+  target=calodaq;
+  target+=trig;
+  target+="Off";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  
+  //*************************************************************************************************//
+  // CALO_daq_Trig_Pied
+
+  dumint = GetIntParam("Trigger","Calo",1,"Pied");
+  target=calodaq;
+  target+=trig;
+  target+="Pied";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  
+  //*************************************************************************************************//
+  // CALO_daq_Trig_Mode
+
+  dumint = GetIntParam("Trigger","Calo",1,"Mode");
+  target=calodaq;
+  target+=trig;
+  target+="Mode";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  
+  //*************************************************************************************************//
+  // CALO_daq_Trig_ChanOff
+  // Array of 168 to fill from array of 42 (4 to 16 bits conversion, forget about last 16 bits)
+
+  Int_t dumint42[42];
+  Int_t dumint168[168];
+  TString msb="Ped";
+  TString msbq="";
+  titi *popo;
+
+  Int_t j=0;
+  for (Int_t i=0;i<42;i++) {
+    msbq=msb;
+    msbq+=i;
+    dumint42[i]=GetIntParam("Trigger","Calo",1,(char*)msbq.Data());
+    popo=(titi*)&(dumint42[i]);
+    dumint168[j]=popo->titi1;
+    dumint168[j+1]=popo->titi2;
+    dumint168[j+2]=popo->titi3;
+    dumint168[j+3]=popo->titi4;
+    j+=4;
+  }
+
+  target=calodaq;
+  target+=trig;
+  target+="ChanOff";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << endl;
+  //  for(Int_t i=0;i<168;i++) cout << dumint168[i] << endl;
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint168,"For test purpose only. FJS");
+
+
+  //*************************************************************************************************//
+  // CALO_daq_Trig_Gain
+  // Array of 168 to fill from array of 21 (8 to 16 bits conversion)
+
+  msb="Gain";
+  tata *papa;
+  Int_t dumint21[21];
+
+  j=0;
+  for (Int_t i=0;i<21;i++) {
+    msbq=msb;
+    msbq+=i;
+    dumint21[i]=GetIntParam("Trigger","Calo",1,(char*)msbq.Data());
+    papa=(tata*)&(dumint21[i]);
+    dumint168[j]=papa->tata1;
+    dumint168[j+1]=papa->tata2;
+    dumint168[j+2]=papa->tata3;
+    dumint168[j+3]=papa->tata4;
+    dumint168[j+4]=papa->tata5;
+    dumint168[j+5]=papa->tata6;
+    dumint168[j+6]=papa->tata7;
+    dumint168[j+7]=papa->tata8;
+    j+=8;
+  }
+
+  target=calodaq;
+  target+=trig;
+  target+="Gain";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << endl;
+  //  for(Int_t i=0;i<168;i++) cout << dumint168[i] << endl;
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint168,"For test purpose only. FJS");
+
+
+  //*************************************************************************************************//
+  // CALO_daq_Trig_Act
+  // Array of 168 to fill from array of 11 (1 to 16 bits conversion)
+
+  msb="Act";
+  tutu *pupu;
+  Int_t dumint11[11];
+
+  j=0;
+  for (Int_t i=0;i<11;i++) {
+    msbq=msb;
+    msbq+=i;
+    dumint11[i]=GetIntParam("Trigger","Calo",1,(char*)msbq.Data());
+    pupu=(tutu*)&(dumint11[i]);
+    dumint168[j]   =pupu->tutu1;
+    dumint168[j+1] =pupu->tutu2;
+    dumint168[j+2] =pupu->tutu3;
+    dumint168[j+3] =pupu->tutu4;
+    dumint168[j+4] =pupu->tutu5;
+    dumint168[j+5] =pupu->tutu6;
+    dumint168[j+6] =pupu->tutu7;
+    dumint168[j+7] =pupu->tutu8;
+    if (i<10) {          // 16*10=160... only 8 to go to 168
+      dumint168[j+8] =pupu->tutu1;
+      dumint168[j+9] =pupu->tutu2;
+      dumint168[j+10]=pupu->tutu3;
+      dumint168[j+11]=pupu->tutu4;
+      dumint168[j+12]=pupu->tutu5;
+      dumint168[j+13]=pupu->tutu6;
+      dumint168[j+14]=pupu->tutu7;
+      dumint168[j+15]=pupu->tutu8;
+    }
+    j+=16;
+  }
+
+  target=calodaq;
+  target+=trig;
+  target+="Act";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << endl;
+  //  for(Int_t i=0;i<168;i++) cout << dumint168[i] << endl;
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint168,"For test purpose only. FJS");
+
+
+  //*************************************************************************************************//
+  // CALO_daq_Trig_Thres
+  // Array of 2
+
+  msb="Thres";
+  Int_t dumint2[2];
+
+  for (Int_t i=0;i<2;i++) {
+    msbq=msb;
+    msbq+=i;
+    dumint2[i]=GetIntParam("Trigger","Calo",1,(char*)msbq.Data());
+  }
+
+  target=calodaq;
+  target+=trig;
+  target+="Thres";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> "<<endl;
+  //  cout << dumint2[0] << "\t" << dumint2[0] << endl;
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint2,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_Width
+
+  for(Int_t i=0;i<9;i++) {
+    dumint = GetIntParam("ARS","Calo",i,"Width");
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_Width";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_NDG
+
+  for(Int_t i=0;i<9;i++) {
+    dumint = GetIntParam("ARS","Calo",i,"ND_G");
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_NDG";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_ND0
+
+  for(Int_t i=0;i<9;i++) {
+    dumint = GetIntParam("ARS","Calo",i,"ND0");
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_ND0";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_ND1
+
+  for(Int_t i=0;i<9;i++) {
+    dumint = GetIntParam("ARS","Calo",i,"ND1");
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_ND1";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_ND2
+
+  for(Int_t i=0;i<9;i++) {
+    dumint = GetIntParam("ARS","Calo",i,"ND2");
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_ND2";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_ND3
+
+  for(Int_t i=0;i<9;i++) {
+    dumint = GetIntParam("ARS","Calo",i,"ND3");
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_ND3";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_ARS_#_DAC
+
+  Int_t dumint16[16];
+
+  for(Int_t i=0;i<9;i++) {
+    for(Int_t j=0;j<16;j++) {
+      TString dacnum="DAC";
+      dacnum+=j;
+      dumint16[j] = GetIntParam("ARS","Calo",i,(char*)dacnum.Data());
+    }
+    target=calodaq;
+    target+=ars;
+    target+=i;
+    target+="_DAC";
+    targ=(char*)target.Data();
+    for(Int_t j=0;j<16;j++) {
+      // cout << "Filling MySQL database for item: " << targ << " -> " << dumint16[j] << endl;
+    }
+    db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint16,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // CALO_daq_Led_Bias
+
+  Int_t dumint4[4];
+
+  dumint4[0] = GetIntParam("Led","Calo",1,"bias0");
+  dumint4[1] = GetIntParam("Led","Calo",1,"bias1");
+  dumint4[2] = GetIntParam("Led","Calo",1,"bias2");
+  dumint4[3] = GetIntParam("Led","Calo",1,"bias3");
+  target=calodaq;
+  target+=led;
+  target+="Bias";
+  targ=(char*)target.Data();
+  for(Int_t j=0;j<4;j++) {
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint4[j] << endl;
+  }
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint4,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // CALO_daq_Led_Status
+
+  dumint = GetIntParam("Led","Calo",1,"status3");
+  target=calodaq;
+  target+=led;
+  target+="Status3";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // CALO_daq_Led_Freq
+
+  dumint = GetIntParam("Led","Calo",1,"freq");
+  target=calodaq;
+  target+=led;
+  target+="Freq";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // ********************************************************************************************* //
+  // **                             Proton Array and Veto information                           ** //
+  // ********************************************************************************************* //
+  // ********************************************************************************************* //
+
+  //*************************************************************************************************//
+  // PA_daq_Trig_Off
+
+  dumint = GetIntParam("Trigger","Proton",1,"Offset");
+  target=padaq;
+  target+=trig;
+  target+="Off";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  
+  //*************************************************************************************************//
+  // PA_daq_Trig_Pied
+
+  dumint = GetIntParam("Trigger","Proton",1,"Pied");
+  target=padaq;
+  target+=trig;
+  target+="Pied";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  
+  //*************************************************************************************************//
+  // PA_daq_Trig_Mode
+
+  dumint = GetIntParam("Trigger","Proton",1,"Mode");
+  target=padaq;
+  target+=trig;
+  target+="Mode";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  
+
+  //*************************************************************************************************//
+  // PA_daq_Trig_Act
+  // Array of 168 to fill from array of 11 (1 to 16 bits conversion)
+
+  msb="Act";
+
+  j=0;
+  for (Int_t i=0;i<11;i++) {
+    msbq=msb;
+    msbq+=i;
+    dumint11[i]=GetIntParam("Trigger","Proton",1,(char*)msbq.Data());
+    pupu=(tutu*)&(dumint11[i]);
+    dumint168[j]   =pupu->tutu1;
+    dumint168[j+1] =pupu->tutu2;
+    dumint168[j+2] =pupu->tutu3;
+    dumint168[j+3] =pupu->tutu4;
+    dumint168[j+4] =pupu->tutu5;
+    dumint168[j+5] =pupu->tutu6;
+    dumint168[j+6] =pupu->tutu7;
+    dumint168[j+7] =pupu->tutu8;
+    if (i<10) {          // 16*10=160... only 8 to go to 168
+      dumint168[j+8] =pupu->tutu1;
+      dumint168[j+9] =pupu->tutu2;
+      dumint168[j+10]=pupu->tutu3;
+      dumint168[j+11]=pupu->tutu4;
+      dumint168[j+12]=pupu->tutu5;
+      dumint168[j+13]=pupu->tutu6;
+      dumint168[j+14]=pupu->tutu7;
+      dumint168[j+15]=pupu->tutu8;
+    }
+    j+=16;
+  }
+
+  target=padaq;
+  target+=trig;
+  target+="Act";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << endl;
+  //  for(Int_t i=0;i<168;i++) cout << dumint168[i] << endl;
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint168,"For test purpose only. FJS");
+
+
+  //*************************************************************************************************//
+  // PA_daq_Trig_Thres
+  // Array of 2
+
+  msb="Thres";
+
+  for (Int_t i=0;i<2;i++) {
+    msbq=msb;
+    msbq+=i;
+    dumint2[i]=GetIntParam("Trigger","Proton",1,(char*)msbq.Data());
+  }
+
+  target=padaq;
+  target+=trig;
+  target+="Thres";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> "<<endl;
+  // cout << dumint2[0] << "\t" << dumint2[0] << endl;
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint2,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_Width
+
+  for(Int_t i=0;i<10;i++) {
+    dumint = GetIntParam("ARS","Proton",i,"Width");
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_Width";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_NDG
+
+  for(Int_t i=0;i<10;i++) {
+    dumint = GetIntParam("ARS","Proton",i,"ND_G");
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_NDG";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_ND0
+
+  for(Int_t i=0;i<10;i++) {
+    dumint = GetIntParam("ARS","Proton",i,"ND0");
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_ND0";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_ND1
+
+  for(Int_t i=0;i<10;i++) {
+    dumint = GetIntParam("ARS","Proton",i,"ND1");
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_ND1";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_ND2
+
+  for(Int_t i=0;i<10;i++) {
+    dumint = GetIntParam("ARS","Proton",i,"ND2");
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_ND2";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_ND3
+
+  for(Int_t i=0;i<10;i++) {
+    dumint = GetIntParam("ARS","Proton",i,"ND3");
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_ND3";
+    targ=(char*)target.Data();
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+    db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_ARS_#_DAC
+
+  for(Int_t i=0;i<10;i++) {
+    for(Int_t j=0;j<16;j++) {
+      TString dacnum="DAC";
+      dacnum+=j;
+      dumint16[j] = GetIntParam("ARS","Proton",i,(char*)dacnum.Data());
+    }
+    target=padaq;
+    target+=ars;
+    target+=i;
+    target+="_DAC";
+    targ=(char*)target.Data();
+    for(Int_t j=0;j<16;j++) {
+      // cout << "Filling MySQL database for item: " << targ << " -> " << dumint16[j] << endl;
+    }
+    db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint16,"For test purpose only. FJS");
+  }
+
+  // ********************************************************************************************* //
+  // PA_daq_Led_Bias
+
+  dumint4[0] = GetIntParam("Led","Proton",1,"bias0");
+  dumint4[1] = GetIntParam("Led","Proton",1,"bias1");
+  dumint4[2] = GetIntParam("Led","Proton",1,"bias2");
+  dumint4[3] = GetIntParam("Led","Proton",1,"bias3");
+  target=padaq;
+  target+=led;
+  target+="Bias";
+  targ=(char*)target.Data();
+  for(Int_t j=0;j<4;j++) {
+    // cout << "Filling MySQL database for item: " << targ << " -> " << dumint4[j] << endl;
+  }
+  db->AddEntry_i((char*)target.Data(),runnumber,runnumber,dumint4,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // PA_daq_Led_Status
+
+  dumint = GetIntParam("Led","Proton",1,"status3");
+  target=padaq;
+  target+=led;
+  target+="Status3";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+
+
+  // ********************************************************************************************* //
+  // PA_daq_Led_Freq
+
+  dumint = GetIntParam("Led","Proton",1,"freq");
+  target=padaq;
+  target+=led;
+  target+="Freq";
+  targ=(char*)target.Data();
+  // cout << "Filling MySQL database for item: " << targ << " -> " << dumint << endl;
+  db->AddOneEntry((char*)target.Data(),runnumber,runnumber,dumint,"For test purpose only. FJS");
+
+
+}

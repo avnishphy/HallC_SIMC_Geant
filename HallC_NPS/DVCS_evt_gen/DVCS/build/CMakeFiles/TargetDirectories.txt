@@ -1,0 +1,7 @@
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/DVCS.dir
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/edit_cache.dir
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/rebuild_cache.dir
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/list_install_components.dir
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/install.dir
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/install/local.dir
+/work/hallc/nps/singhav/geant4_simc/HallC_NPS/DVCS_evt_gen/DVCS/build/CMakeFiles/install/strip.dir
