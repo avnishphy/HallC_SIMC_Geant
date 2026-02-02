@@ -28,6 +28,10 @@ G4ThreeVector B5HadCalorimeterSD::fPhot1Pos = G4ThreeVector(0,0,0);
 G4ThreeVector B5HadCalorimeterSD::fPhot2Pos = G4ThreeVector(0,0,0);
 G4double B5HadCalorimeterSD::fPhot1Edep = 0.0;
 G4double B5HadCalorimeterSD::fPhot2Edep = 0.0;
+G4int B5HadCalorimeterSD::fPhot1Col = -1;
+G4int B5HadCalorimeterSD::fPhot1Row = -1;
+G4int B5HadCalorimeterSD::fPhot2Col = -1;
+G4int B5HadCalorimeterSD::fPhot2Row = -1;
 
 // File-scope parent map: trackID -> parentID
 // NOTE: We keep this as a file-scope container so we do NOT need to modify header files.
@@ -54,6 +58,10 @@ void B5HadCalorimeterSD::ResetPhotonInfo()
     fPhot2Pos = G4ThreeVector(0,0,0);
     fPhot1Edep = 0.0;
     fPhot2Edep = 0.0;
+    fPhot1Col = -1;
+    fPhot1Row = -1;
+    fPhot2Col = -1;
+    fPhot2Row = -1;
 
     // Clear the parent map for the next event
     sParentMap.clear();
@@ -158,21 +166,24 @@ G4bool B5HadCalorimeterSD::ProcessHits(G4Step* step, G4TouchableHistory*)
         // Adjust coordinates for recording
         // z: move to crystal front face (+10cm)
         G4double dz = 100*mm; // half-length of crystal along z
-        G4double zFront = entryLocal.z() + dz;  
-
-        // x, y: offset by column/row number
-        G4double xHit = entryLocal.x() + columnNo;
-        G4double yHit = entryLocal.y() + rowNo;
+        G4double zFront = entryLocal.z() + dz;
 
         // Assign photon hit info
         if (fPhot1TrackID == 0) {
             fPhot1TrackID = tid;
             fPhot1HitFlag  = true;
-            fPhot1Pos = G4ThreeVector(xHit, yHit, zFront);
+            // Store local hit position on the crystal front face (mm) + block indices
+            fPhot1Pos = G4ThreeVector(entryLocal.x(), entryLocal.y(), zFront);
+            // Extract actual column/row from hitID (since touchable copy number is the full hitID at boundary)
+            fPhot1Col = hitID % 36;
+            fPhot1Row = hitID / 36;
         } else if (fPhot2TrackID == 0 && tid != fPhot1TrackID) {
             fPhot2TrackID = tid;
             fPhot2HitFlag  = true;
-            fPhot2Pos = G4ThreeVector(xHit, yHit, zFront);
+            fPhot2Pos = G4ThreeVector(entryLocal.x(), entryLocal.y(), zFront);
+            // Extract actual column/row from hitID
+            fPhot2Col = hitID % 36;
+            fPhot2Row = hitID / 36;
         }
     }
 

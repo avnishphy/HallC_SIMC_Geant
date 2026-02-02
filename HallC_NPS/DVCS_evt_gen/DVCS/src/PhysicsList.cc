@@ -51,7 +51,7 @@
 
 // Needed for optical photon physics
 // Uncomment it when you want to use it
-//#include "G4OpticalPhysics.hh"
+// #include "G4OpticalPhysics.hh"
 
 #include "G4EmStandardPhysicsWVI.hh"
 #include "G4EmStandardPhysics_option1.hh"

@@ -88,8 +88,15 @@ public:
   static G4bool Phot1Hit()   { return fPhot1HitFlag; }
   static G4bool Phot2Hit()   { return fPhot2HitFlag; }
 
+  // Local hit position on the crystal front face (Geant4 local coordinates, in mm)
   static G4ThreeVector Phot1Pos() { return fPhot1Pos; }
   static G4ThreeVector Phot2Pos() { return fPhot2Pos; }
+
+  // Block indices for the hit crystal
+  static G4int Phot1Col() { return fPhot1Col; }
+  static G4int Phot1Row() { return fPhot1Row; }
+  static G4int Phot2Col() { return fPhot2Col; }
+  static G4int Phot2Row() { return fPhot2Row; }
 
   static G4double Phot1Edep() { return fPhot1Edep; }
   static G4double Phot2Edep() { return fPhot2Edep; }
@@ -108,6 +115,10 @@ private:
   static G4bool   fPhot2HitFlag;
   static G4ThreeVector fPhot1Pos;
   static G4ThreeVector fPhot2Pos;
+  static G4int fPhot1Col;
+  static G4int fPhot1Row;
+  static G4int fPhot2Col;
+  static G4int fPhot2Row;
   static G4double fPhot1Edep;
   static G4double fPhot2Edep;
 };

@@ -33,6 +33,8 @@
 #include <ctime>
 #include <vector>
 
+#include "TCaloGeometry.h"
+
 #include "G4SystemOfUnits.hh"                // Geant4 units (mm, cm, GeV, etc.)
 #include "CLHEP/Units/SystemOfUnits.h"      // CLHEP::cm used elsewhere in code
 
@@ -279,14 +281,14 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         // Run trigger simulation and clustering using TCaloEvent API
         const G4double triggerThreshold_GeV = 0.5; // threshold in GeV
         calo_evt->TriggerSim(triggerThreshold_GeV); // may modify internal block selection
-        calo_evt->DoClustering(-3.0, 3.0);          // time window [-3, +3] ns
+        calo_evt->DoClustering(-5.0, 5.0);          // time window [-3, +3] ns
 
         // Analyze each cluster (compute centers etc.)
         G4int Nb_clust = calo_evt->GetNbClusters();
         for (G4int ic = 0; ic < Nb_clust; ++ic) {
             TCaloCluster* clus = calo_evt->GetCluster(ic);
             if (clus) {
-                clus->Analyze(1.0, -3.0, 3.0);
+                clus->Analyze(1.0, -5.0, 5.0);
             }
         }
 
@@ -320,6 +322,11 @@ void EventAction::EndOfEventAction(const G4Event* evt)
     // --------------------------
     // 3) Per-photon SD info and fill photon ntuple
     // --------------------------
+    // TRUE HIT POSITIONS (Geant4):
+    // - Use the exact Geant4 local hit position on the crystal front face.
+    // - Use TCaloGeometry ONLY for detector geometry (block centers incl. wrapping/gaps).
+    // - No clustering weights or cluster-derived positions are used here.
+    // --------------------------
     bool phot1_hit = B5HadCalorimeterSD::Phot1Hit();
     bool phot2_hit = B5HadCalorimeterSD::Phot2Hit();
 
@@ -331,19 +338,98 @@ void EventAction::EndOfEventAction(const G4Event* evt)
     double phot1_Ecal = -999., phot2_Ecal = -999.;
     int    phot1_clustSize = -1, phot2_clustSize = -1;
 
-    if (phot1_hit) {
+    // Access the TCaloGeometry used by the clustering algorithm
+    TCaloGeometry* geom = nullptr;
+    if (calo_evt) {
+        geom = calo_evt->GetGeometry();
+    }
+
+    if (phot1_hit && geom) {
+        auto p1_local = B5HadCalorimeterSD::Phot1Pos();
+        const int columnNo = B5HadCalorimeterSD::Phot1Col();
+        const int rowNo = B5HadCalorimeterSD::Phot1Row();
+
+        if (columnNo >= 0 && rowNo >= 0) {
+            // Local hit position on the crystal face (mm -> cm)
+            const double localX_cm = p1_local.x() / CLHEP::cm;
+            const double localY_cm = p1_local.y() / CLHEP::cm;
+
+            // DEBUG: print values to diagnose the 0-2400 issue
+
+            G4cout << "DEBUG phot1: columnNo=" << columnNo << " rowNo=" << rowNo 
+                    << " localX_mm=" << p1_local.x() << " localX_cm=" << localX_cm 
+                    << " blockX_cm=" << (columnNo * 2.113) << G4endl;
+            
+
+            // Nominal block center positions (2.113 cm spacing, left-bottom origin)
+            // Block (col, row) center = (col * 2.113, row * 2.113) in cm
+            const double blockCenterX_cm = rowNo * 2.113;
+            const double blockCenterY_cm = columnNo * 2.113;
+
+            // True Geant hit position (block center + local offset)
+            const double hitX_cm = -1 * (blockCenterX_cm - localX_cm - (30*2.113/2.)); // shift to center around 0
+            const double hitY_cm = blockCenterY_cm + localY_cm - (36*2.113/2.); // shift to center around 0
+
+            phot1_hitx = hitX_cm;
+            phot1_hity = hitY_cm;
+            phot1_hitz = p1_local.z() / CLHEP::cm;  // front-face z in cm
+        } else {
+            G4cout << "WARNING: phot1 hit missing block indices; using local position only" << G4endl;
+            phot1_hitx = p1_local.x() / CLHEP::cm;
+            phot1_hity = p1_local.y() / CLHEP::cm;
+            phot1_hitz = p1_local.z() / CLHEP::cm;
+        }
+
+        phot1_Ecal = B5HadCalorimeterSD::Phot1Edep() / CLHEP::GeV;
+        phot1_vx = fVertex_x;
+        phot1_vy = fVertex_y;
+        phot1_vz = fVertex_z;
+    } else if (phot1_hit && !geom) {
+        // Fallback if geometry not available (should not happen)
+        G4cout << "WARNING: phot1 hit but TCaloGeometry not available" << G4endl;
         auto p1 = B5HadCalorimeterSD::Phot1Pos();
-        // convert from Geant4 native (mm) to cm for consistency with other SIMC values
         phot1_hitx = p1.x() / CLHEP::cm;
         phot1_hity = p1.y() / CLHEP::cm;
         phot1_hitz = p1.z() / CLHEP::cm;
-        phot1_Ecal = B5HadCalorimeterSD::Phot1Edep() / CLHEP::GeV; // in GeV
+        phot1_Ecal = B5HadCalorimeterSD::Phot1Edep() / CLHEP::GeV;
         phot1_vx = fVertex_x;
         phot1_vy = fVertex_y;
         phot1_vz = fVertex_z;
     }
 
-    if (phot2_hit) {
+    if (phot2_hit && geom) {
+        auto p2_local = B5HadCalorimeterSD::Phot2Pos();
+        const int columnNo = B5HadCalorimeterSD::Phot2Col();
+        const int rowNo = B5HadCalorimeterSD::Phot2Row();
+
+        if (columnNo >= 0 && rowNo >= 0) {
+            const double localX_cm = p2_local.x() / CLHEP::cm;
+            const double localY_cm = p2_local.y() / CLHEP::cm;
+
+            // Nominal block center positions (2.113 cm spacing, left-bottom origin)
+            const double blockCenterX_cm = rowNo * 2.113;
+            const double blockCenterY_cm = columnNo * 2.113;
+
+            // True Geant hit position
+            const double hitX_cm = -1 * (blockCenterX_cm - localX_cm - (30*2.113/2.)); // shift to center around 0
+            const double hitY_cm = blockCenterY_cm + localY_cm - (36*2.113/2.); // shift to center around 0
+
+            phot2_hitx = hitX_cm;
+            phot2_hity = hitY_cm;
+            phot2_hitz = p2_local.z() / CLHEP::cm;
+        } else {
+            G4cout << "WARNING: phot2 hit missing block indices; using local position only" << G4endl;
+            phot2_hitx = p2_local.x() / CLHEP::cm;
+            phot2_hity = p2_local.y() / CLHEP::cm;
+            phot2_hitz = p2_local.z() / CLHEP::cm;
+        }
+
+        phot2_Ecal = B5HadCalorimeterSD::Phot2Edep() / CLHEP::GeV;
+        phot2_vx = fVertex_x;
+        phot2_vy = fVertex_y;
+        phot2_vz = fVertex_z;
+    } else if (phot2_hit && !geom) {
+        G4cout << "WARNING: phot2 hit but TCaloGeometry not available" << G4endl;
         auto p2 = B5HadCalorimeterSD::Phot2Pos();
         phot2_hitx = p2.x() / CLHEP::cm;
         phot2_hity = p2.y() / CLHEP::cm;
@@ -353,6 +439,45 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         phot2_vy = fVertex_y;
         phot2_vz = fVertex_z;
     }
+
+    // // --- Cluster info (first two clusters) preserved for compatibility ---
+    // G4int    clust_size1 = -1, clust_size2 = -1;
+    // G4double clust_x1 = 0, clust_y1 = 0, clust_e1 = 0;
+    // G4double clust_x2 = 0, clust_y2 = 0, clust_e2 = 0;
+
+    // if (calo_evt && calo_evt->GetNbClusters() > 0) {
+    //     auto c1 = calo_evt->GetCluster(0);
+    //     if (c1) {
+    //         clust_size1 = c1->GetClusSize();
+    //         clust_x1    = c1->GetX();
+    //         clust_y1    = c1->GetY();
+    //         clust_e1    = c1->GetEnergy();
+    //     }
+    // }
+
+    // if (calo_evt && calo_evt->GetNbClusters() > 1) {
+    //     auto c2 = calo_evt->GetCluster(1);
+    //     if (c2) {
+    //         clust_size2 = c2->GetClusSize();
+    //         clust_x2    = c2->GetX();
+    //         clust_y2    = c2->GetY();
+    //         clust_e2    = c2->GetEnergy();
+    //     }
+    // }
+
+    // phot1_clustSize = clust_size1;
+    // phot2_clustSize = clust_size2;
+
+    // // Pass values to HistoManager via setters (these fill the members that are branched)
+    // fHistoManager->SetPhotHit1(phot1_hit, phot1_vx, phot1_vy, phot1_vz,
+    //                            phot1_hitx, phot1_hity, phot1_hitz,
+    //                            clust_x1, clust_y1,
+    //                            phot1_Ecal, phot1_clustSize);
+
+    // fHistoManager->SetPhotHit2(phot2_hit, phot2_vx, phot2_vy, phot2_vz,
+    //                            phot2_hitx, phot2_hity, phot2_hitz,
+    //                            clust_x2, clust_y2,
+    //                            phot2_Ecal, phot2_clustSize);
 
     // --- Cluster info (first two clusters) preserved for compatibility ---
     G4int    clust_size1 = -1, clust_size2 = -1;
@@ -379,19 +504,112 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         }
     }
 
-    phot1_clustSize = clust_size1;
-    phot2_clustSize = clust_size2;
+    // Prepare per-photon cluster outputs (defaults)
+    double phot1_clust_x = -999., phot1_clust_y = -999.;
+    double phot2_clust_x = -999., phot2_clust_y = -999.;
+    // int    phot1_clustSize = -1, phot2_clustSize = -1;
 
-    // Pass values to HistoManager via setters (these fill the members that are branched)
+    // Helper: absolute difference. Uses <cmath>
+    auto diff = [](double a, double b){ return std::fabs(a - b); };
+
+    // Case classification based on hits & cluster availability
+    int nclusters = 0;
+    if (clust_size1 >= 0) ++nclusters;
+    if (clust_size2 >= 0) ++nclusters;
+
+    if (nclusters == 0) {
+        // no clusters: leave defaults
+    }
+    else if (nclusters == 1) {
+        // single cluster present -> decide which photon it's closest to
+        // prefer the photon that actually registered a hit; if no photons hit, default to phot1
+        double e = (clust_size1 >= 0) ? clust_e1 : clust_e2;
+        if (phot1_hit && !phot2_hit) {
+            // assign to phot1
+            phot1_clust_x = (clust_size1 >= 0) ? clust_x1 : clust_x2;
+            phot1_clust_y = (clust_size1 >= 0) ? clust_y1 : clust_y2;
+            phot1_clustSize = (clust_size1 >= 0) ? clust_size1 : clust_size2;
+        } else if (phot2_hit && !phot1_hit) {
+            // assign to phot2
+            phot2_clust_x = (clust_size1 >= 0) ? clust_x1 : clust_x2;
+            phot2_clust_y = (clust_size1 >= 0) ? clust_y1 : clust_y2;
+            phot2_clustSize = (clust_size1 >= 0) ? clust_size1 : clust_size2;
+        } else if (phot1_hit && phot2_hit) {
+            // both photons hit -> pick closer
+            double d1 = diff(e, phot1_Ecal);
+            double d2 = diff(e, phot2_Ecal);
+            if (d1 <= d2) {
+                phot1_clust_x = (clust_size1 >= 0) ? clust_x1 : clust_x2;
+                phot1_clust_y = (clust_size1 >= 0) ? clust_y1 : clust_y2;
+                phot1_clustSize = (clust_size1 >= 0) ? clust_size1 : clust_size2;
+            } else {
+                phot2_clust_x = (clust_size1 >= 0) ? clust_x1 : clust_x2;
+                phot2_clust_y = (clust_size1 >= 0) ? clust_y1 : clust_y2;
+                phot2_clustSize = (clust_size1 >= 0) ? clust_size1 : clust_size2;
+            }
+        } else {
+            // no photons hit -> default to phot1
+            phot1_clust_x = (clust_size1 >= 0) ? clust_x1 : clust_x2;
+            phot1_clust_y = (clust_size1 >= 0) ? clust_y1 : clust_y2;
+            phot1_clustSize = (clust_size1 >= 0) ? clust_size1 : clust_size2;
+        }
+    }
+    else { // nclusters == 2
+        // Both clusters present. Three possibilities:
+        // - both photons hit -> choose assignment (1->p1,2->p2) or (1->p2,2->p1) minimizing total |ΔE|
+        // - only one photon hit -> assign the cluster closest to that photon
+        // - no photons hit -> default mapping clust1->phot1, clust2->phot2
+        if (phot1_hit && phot2_hit) {
+            double opt1 = diff(clust_e1, phot1_Ecal) + diff(clust_e2, phot2_Ecal); // c1->p1, c2->p2
+            double opt2 = diff(clust_e1, phot2_Ecal) + diff(clust_e2, phot1_Ecal); // c1->p2, c2->p1
+            if (opt1 <= opt2) {
+                // assign c1->phot1, c2->phot2
+                phot1_clust_x = clust_x1; phot1_clust_y = clust_y1; phot1_clustSize = clust_size1;
+                phot2_clust_x = clust_x2; phot2_clust_y = clust_y2; phot2_clustSize = clust_size2;
+            } else {
+                // assign c1->phot2, c2->phot1
+                phot2_clust_x = clust_x1; phot2_clust_y = clust_y1; phot2_clustSize = clust_size1;
+                phot1_clust_x = clust_x2; phot1_clust_y = clust_y2; phot1_clustSize = clust_size2;
+            }
+        } else if (phot1_hit && !phot2_hit) {
+            // only phot1 hit: pick cluster closer to phot1
+            double d1 = diff(clust_e1, phot1_Ecal);
+            double d2 = diff(clust_e2, phot1_Ecal);
+            if (d1 <= d2) {
+                phot1_clust_x = clust_x1; phot1_clust_y = clust_y1; phot1_clustSize = clust_size1;
+                // leave phot2 defaults (unassigned)
+            } else {
+                phot1_clust_x = clust_x2; phot1_clust_y = clust_y2; phot1_clustSize = clust_size2;
+            }
+        } else if (phot2_hit && !phot1_hit) {
+            // only phot2 hit: pick cluster closer to phot2
+            double d1 = diff(clust_e1, phot2_Ecal);
+            double d2 = diff(clust_e2, phot2_Ecal);
+            if (d1 <= d2) {
+                phot2_clust_x = clust_x1; phot2_clust_y = clust_y1; phot2_clustSize = clust_size1;
+            } else {
+                phot2_clust_x = clust_x2; phot2_clust_y = clust_y2; phot2_clustSize = clust_size2;
+            }
+        } else {
+            // no photon SD hits -> default mapping
+            phot1_clust_x = clust_x1; phot1_clust_y = clust_y1; phot1_clustSize = clust_size1;
+            phot2_clust_x = clust_x2; phot2_clust_y = clust_y2; phot2_clustSize = clust_size2;
+        }
+    }
+
+    // Now set the values that the HistoManager expects (keep compatibility)
+    // If you prefer to keep the original variable names clust_x1/clust_y1 etc.
+    // you can overwrite them here — but we pass the assigned per-photon cluster coords below.
     fHistoManager->SetPhotHit1(phot1_hit, phot1_vx, phot1_vy, phot1_vz,
-                               phot1_hitx, phot1_hity, phot1_hitz,
-                               clust_x1, clust_y1,
-                               phot1_Ecal, phot1_clustSize);
+                            phot1_hitx, phot1_hity, phot1_hitz,
+                            phot1_clust_x, phot1_clust_y,
+                            phot1_Ecal, phot1_clustSize);
 
     fHistoManager->SetPhotHit2(phot2_hit, phot2_vx, phot2_vy, phot2_vz,
-                               phot2_hitx, phot2_hity, phot2_hitz,
-                               clust_x2, clust_y2,
-                               phot2_Ecal, phot2_clustSize);
+                            phot2_hitx, phot2_hity, phot2_hitz,
+                            phot2_clust_x, phot2_clust_y,
+                            phot2_Ecal, phot2_clustSize);
+
 
     // Fill ntuple (photons + cluster vectors)
     fHistoManager->FillNtupleDVCS();
