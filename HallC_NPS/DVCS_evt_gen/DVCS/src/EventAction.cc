@@ -354,13 +354,6 @@ void EventAction::EndOfEventAction(const G4Event* evt)
             const double localX_cm = p1_local.x() / CLHEP::cm;
             const double localY_cm = p1_local.y() / CLHEP::cm;
 
-            // DEBUG: print values to diagnose the 0-2400 issue
-
-            G4cout << "DEBUG phot1: columnNo=" << columnNo << " rowNo=" << rowNo 
-                    << " localX_mm=" << p1_local.x() << " localX_cm=" << localX_cm 
-                    << " blockX_cm=" << (columnNo * 2.113) << G4endl;
-            
-
             // Nominal block center positions (2.113 cm spacing, left-bottom origin)
             // Block (col, row) center = (col * 2.113, row * 2.113) in cm
             const double blockCenterX_cm = rowNo * 2.113;

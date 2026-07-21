@@ -73,7 +73,7 @@ Then run Geant4 from:
 
 ```bash
 cd HallC_NPS/DVCS_evt_gen/DVCS/build
-./DVCS <simc.root> [tree] [nEvents] [out.root] [--batch] [--vis]
+./DVCS <simc.root> [tree] [nEvents] [out.root] [--batch] [--vis|--vis-single|--vis-seq]
 ```
 
 Arguments:
@@ -83,7 +83,9 @@ Arguments:
 * `nEvents`   : Number of events to process (≤ number in SIMC file)
 * `out.root`  : Output ROOT file (default: `geant_output.root`)
 * `--batch`   : Batch mode (recommended for production)
-* `--vis`     : Geant4 visualization (currently reliable for single-event runs)
+* `--vis`         : Start visualization UI and prepare the scene (manual stepping)
+* `--vis-single`  : Start visualization UI and auto-run one event
+* `--vis-seq`     : Start visualization UI in sequential stepping mode
 
 ---
 
@@ -182,22 +184,142 @@ Care must be taken when comparing with Hall C data coordinate conventions.
 
 ## 7. Visualization
 
-Single-event visualization:
+The DVCS application now supports three explicit visualization modes:
 
 ```bash
-./DVCS simc.root h10 1 vis.root --vis
+# Open detector view, then step manually
+./DVCS simc.root h10 100 vis.root --vis
+
+# Auto-run one event and stop in UI
+./DVCS simc.root h10 1 vis.root --vis-single
+
+# Prepare sequential viewing in UI
+./DVCS simc.root h10 100 vis.root --vis-seq
 ```
 
-Displays:
+Inside the Geant4 UI, sequential event stepping is done with:
 
-* NPS crystal geometry
-* Electromagnetic shower development
-* Primary photon trajectories
-* Energy deposition patterns
+```text
+/run/beamOn 1
+```
+
+This command can be repeated to inspect events one-by-one without restarting the application.
+
+Macro files copied to `build/macros/`:
+
+* `vis_setup.mac`      : scene setup only
+* `vis_single.mac`     : setup + one event
+* `vis_sequential.mac` : setup + sequential stepping guidance
+* `vis.mac`            : backward-compatible alias to `vis_setup.mac`
 
 ---
 
-## 8. Contact
+## 8. April 2026 Compatibility Update
+
+The HallC_NPS legacy variants (glass, Energy Resolution, PbWO4) were updated for
+Geant4 11 compatibility in their hit classes.
+
+### What was fixed
+
+Geant4 11 rejects numeric initialization of G4String fields (for example
+`fOP_String(-1)`). These were updated to string initialization (`fOP_String("-1")`)
+in all affected hit constructors across:
+
+* `HallC_NPS/glass_prototype/source/src/*Hit.cc`
+* `HallC_NPS/jlab_HallC_NPS_Energy_Resolution_Simulation/source/src/*Hit.cc`
+* `HallC_NPS/jlab_HallC_NPS_PbWO4/source/src/*Hit.cc`
+
+### Scope note
+
+No source changes were made under `NPS_SOFT/`.
+
+---
+
+## 9. Rebuild Instructions (After This Update)
+
+Yes, you should compile again to apply the code changes.
+
+### Minimum rebuild (only what you run)
+
+If you only run DVCS, rebuild DVCS:
+
+```bash
+module purge
+module use /group/halla/modulefiles
+module load geant4/11.2.1
+module load root/6.30.04
+
+cd HallC_NPS/DVCS_evt_gen/DVCS/build
+cmake -DNPS_SOFT_ROOT=../../../NPS_SOFT ..
+cmake --build . -j 8
+```
+
+If you use one of the legacy apps, rebuild that app as well:
+
+```bash
+# glass
+cd HallC_NPS/glass_prototype/source
+mkdir -p build && cd build
+cmake ..
+cmake --build . -j 8
+
+# energy resolution
+cd HallC_NPS/jlab_HallC_NPS_Energy_Resolution_Simulation/source
+mkdir -p build && cd build
+cmake ..
+cmake --build . -j 8
+
+# PbWO4
+cd HallC_NPS/jlab_HallC_NPS_PbWO4/source
+mkdir -p build && cd build
+cmake ..
+cmake --build . -j 8
+```
+
+### Recommended full refresh (safest)
+
+If you want a clean state for all HallC_NPS targets:
+
+```bash
+module purge
+module use /group/halla/modulefiles
+module load geant4/11.2.1
+module load root/6.30.04
+
+rm -rf HallC_NPS/DVCS_evt_gen/DVCS/build
+rm -rf HallC_NPS/glass_prototype/source/build
+rm -rf HallC_NPS/jlab_HallC_NPS_Energy_Resolution_Simulation/source/build
+rm -rf HallC_NPS/jlab_HallC_NPS_PbWO4/source/build
+
+mkdir -p HallC_NPS/DVCS_evt_gen/DVCS/build
+mkdir -p HallC_NPS/glass_prototype/source/build
+mkdir -p HallC_NPS/jlab_HallC_NPS_Energy_Resolution_Simulation/source/build
+mkdir -p HallC_NPS/jlab_HallC_NPS_PbWO4/source/build
+```
+
+Then configure/build each target using the commands above.
+
+---
+
+## 10. Quick Post-Build Checks
+
+After rebuilding:
+
+1. Verify executables exist:
+   * `HallC_NPS/DVCS_evt_gen/DVCS/build/DVCS`
+   * `HallC_NPS/glass_prototype/source/build/glass`
+   * `HallC_NPS/jlab_HallC_NPS_Energy_Resolution_Simulation/source/build/NPS_Energy_Resolution`
+   * `HallC_NPS/jlab_HallC_NPS_PbWO4/source/build/NPS`
+2. Verify DVCS visualization modes:
+   * `--vis`
+   * `--vis-single`
+   * `--vis-seq`
+3. In UI, step sequentially with:
+   * `/run/beamOn 1`
+
+---
+
+## 11. Contact
 
 **Avnish Singh**
 The Catholic University of America

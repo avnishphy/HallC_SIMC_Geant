@@ -1,4 +1,6 @@
 # run_batch.mac
 /run/initialize
-# replace N by your desired number when calling: /control/execute run_batch.mac
-/run/beamOn N
+# Optional override before execution:
+#   /control/alias nev 1000
+/control/alias nev 1
+/run/beamOn {nev}

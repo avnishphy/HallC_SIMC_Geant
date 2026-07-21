@@ -1,3 +1,11 @@
+2026-04-08 update
+- CMake executable name: `NPS_Energy_Resolution`
+- Visualization macro workflow:
+	- `vis_setup.mac`
+	- `vis_single.mac`
+	- `vis_sequential.mac`
+	- `vis.mac` (alias to `vis_setup.mac`)
+
 20180709
 Using Bogdan's magnetic fields.
 Target Length : 10cm.

@@ -40,6 +40,11 @@ file(GLOB DVCS_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc" "${CMAKE_CURRENT_SOUR
 # Create the executable
 add_executable(DVCS ${DVCS_SRCS} ${DVCS_HEADERS})
 
+target_compile_definitions(DVCS PRIVATE
+  DVCS_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  DVCS_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}"
+)
+
 # Link Geant4 and ROOT
 # Older Geant4 uses ${Geant4_LIBRARIES}; include file already sets these. We'll link with them.
 target_include_directories(DVCS PRIVATE ${Geant4_INCLUDE_DIRS})
@@ -83,6 +88,35 @@ endif()
 if(UNIX)
   target_link_libraries(DVCS PRIVATE pthread dl m)
 endif()
+
+# Copy runtime macros into the build tree so UI commands can find them.
+# The canonical runtime location is build/macros/.  Flat build/*.mac copies are
+# retained for compatibility with older launch habits and existing notes.
+set(DVCS_RUNTIME_MACROS
+  macros/vis.mac
+  macros/vis_setup.mac
+  macros/vis_single.mac
+  macros/vis_sequential.mac
+  macros/vis_gpt.mac
+  macros/test.mac
+  macros/run_batch.mac
+)
+
+set(DVCS_BUILD_MACRO_DIR ${CMAKE_CURRENT_BINARY_DIR}/macros)
+file(MAKE_DIRECTORY ${DVCS_BUILD_MACRO_DIR})
+foreach(_macro ${DVCS_RUNTIME_MACROS})
+  get_filename_component(_macro_name ${_macro} NAME)
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/${_macro}
+    ${DVCS_BUILD_MACRO_DIR}/${_macro_name}
+    COPYONLY
+  )
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/${_macro}
+    ${CMAKE_CURRENT_BINARY_DIR}/${_macro_name}
+    COPYONLY
+  )
+endforeach()
 
 # Installation (optional)
 install(TARGETS DVCS RUNTIME DESTINATION bin)

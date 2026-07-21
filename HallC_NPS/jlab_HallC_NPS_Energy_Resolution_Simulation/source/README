@@ -1,3 +1,16 @@
+2026-04-08 update
+- CMake executable name: `NPS_Energy_Resolution`
+- Interactive mode auto-loads visualization setup macro when available.
+- Visualization macros:
+  - `vis_setup.mac` (setup only)
+  - `vis_single.mac` (setup + one event)
+  - `vis_sequential.mac` (setup + one-by-one stepping guidance)
+  - `vis.mac` (alias to `vis_setup.mac`)
+
+Typical run patterns:
+- Interactive visualization: `./NPS_Energy_Resolution`
+- Batch with macro: `./NPS_Energy_Resolution macros/test.mac`
+
 
 this is just to test the resolution of the NPS.
 0, 0.5, 1, 1.5, 2, 20 mm gap between the crystals

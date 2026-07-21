@@ -41,6 +41,7 @@
 #include "HistoManager.hh"
 
 #include <ctime>//to count time
+#include <vector>
 
 #ifdef G4VIS_USE
 #include "G4VisExecutive.hh"
@@ -49,6 +50,38 @@
 #ifdef G4UI_USE
 #include "G4UIExecutive.hh"
 #endif
+
+namespace {
+void ConfigureMacroSearchPath(G4UImanager* uiManager)
+{
+  // Support plain names and macros/ paths across common working directories.
+  uiManager->ApplyCommand("/control/macroPath .:./macros:../macros");
+}
+
+void TryLoadDefaultVisMacro(G4UImanager* uiManager)
+{
+  const std::vector<G4String> candidates = {
+    "./macros/vis_setup.mac",
+    "macros/vis_setup.mac",
+    "../macros/vis_setup.mac",
+    "vis_setup.mac",
+    "./macros/vis.mac",
+    "macros/vis.mac",
+    "../macros/vis.mac",
+    "vis.mac"
+  };
+
+  for (const auto& macro : candidates) {
+    if (uiManager->ApplyCommand("/control/execute " + macro) == 0) {
+      G4cout << "Loaded visualization macro: " << macro << G4endl;
+      return;
+    }
+  }
+
+  G4cout << "WARNING: could not auto-load visualization macro. "
+         << "Use /control/execute <macro> manually." << G4endl;
+}
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -111,6 +144,7 @@ int main(int argc,char** argv)
   runManager->SetUserAction(stepping_action);
   
   G4UImanager* UImanager = G4UImanager::GetUIpointer();
+  ConfigureMacroSearchPath(UImanager);
   
   if (argc!=1)   // batch mode
     {
@@ -126,6 +160,7 @@ int main(int argc,char** argv)
 #endif
 #ifdef G4UI_USE
       G4UIExecutive* ui = new G4UIExecutive(argc, argv);
+  TryLoadDefaultVisMacro(UImanager);
       ui->SessionStart();
       delete ui;
 #endif

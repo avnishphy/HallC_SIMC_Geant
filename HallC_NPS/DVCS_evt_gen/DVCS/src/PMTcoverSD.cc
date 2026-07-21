@@ -75,6 +75,7 @@ void PMTcoverSD::Initialize(G4HCofThisEvent* hce)
 G4bool PMTcoverSD::ProcessHits(G4Step* step, G4TouchableHistory*)
 {
   G4Track* track = step->GetTrack();
+  if (!track) return false;
   G4String ParticleName = track->GetDynamicParticle()->GetParticleDefinition()->GetParticleName();
   G4int op = 0;
   if (ParticleName!="opticalphoton") return false;
@@ -82,27 +83,46 @@ G4bool PMTcoverSD::ProcessHits(G4Step* step, G4TouchableHistory*)
 
   G4TouchableHistory* touchable
     = (G4TouchableHistory*)(step->GetPreStepPoint()->GetTouchable());
+  if (!touchable || !touchable->GetHistory()) return false;
+
+  G4int depth = touchable->GetHistory()->GetDepth();
+  if (depth < 2) return false;
 
 
   G4VPhysicalVolume* cellPhysical = touchable->GetVolume(2);
-  G4int rowNo = cellPhysical->GetCopyNo();//0~29(30) in total
   G4VPhysicalVolume* columnPhysical = touchable->GetVolume(1);
-  G4int columnNo = columnPhysical->GetCopyNo();//0~35(36) in total
+  if (!cellPhysical || !columnPhysical) return false;
+
+  G4int rawRow = cellPhysical->GetCopyNo();
+  G4int rawCol = columnPhysical->GetCopyNo();
+  G4int rowNo = rawRow;//0~29(30) in total
+  G4int columnNo = rawCol;//0~35(36) in total
+  if (rowNo < 0 || rowNo >= 30 || columnNo < 0 || columnNo >= 36) {
+    if (rawCol >= 0 && rawCol < 1080) {
+      rowNo = rawCol / 36;
+      columnNo = rawCol % 36;
+    }
+  }
+  if (rowNo < 0 || rowNo >= 30 || columnNo < 0 || columnNo >= 36) return false;
+
   G4int hitID = columnNo+36*rowNo;//0~1079(1080)
+  if (!fHitsCollection || hitID < 0 || hitID >= fHitsCollection->entries()) return false;
 
   PMTcoverHit* hit = (*fHitsCollection)[hitID];
+  if (!hit) return false;
 
   // check if it is first touch
   if (hit->GetColumnID()<0)
     {
       hit->SetColumnID(columnNo);
       hit->SetRowID(rowNo);
-      G4int depth = touchable->GetHistory()->GetDepth();
-      G4AffineTransform transform 
-	= touchable->GetHistory()->GetTransform(depth-2);
-      transform.Invert();
-      hit->SetRot(transform.NetRotation());
-      hit->SetPos(transform.NetTranslation());
+      if (depth >= 2) {
+	G4AffineTransform transform 
+	  = touchable->GetHistory()->GetTransform(depth-2);
+	transform.Invert();
+	hit->SetRot(transform.NetRotation());
+	hit->SetPos(transform.NetTranslation());
+      }
     }
 
   hit->AddOPInt(op);

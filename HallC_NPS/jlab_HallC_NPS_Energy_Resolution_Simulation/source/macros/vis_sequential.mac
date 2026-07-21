@@ -1,0 +1,6 @@
+# vis_sequential.mac
+# Prepare visualization for stepping through events one by one.
+
+/control/execute vis_setup.mac
+/control/echo "Sequential mode enabled."
+/control/echo "Run /run/beamOn 1 repeatedly to step through events."

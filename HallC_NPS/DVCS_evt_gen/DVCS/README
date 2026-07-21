@@ -1,3 +1,22 @@
+2026-04-08 update
+DVCS visualization workflow is standardized:
+- `--vis`        : open UI with detector view (manual stepping)
+- `--vis-single` : open UI and run one event
+- `--vis-seq`    : open UI for one-by-one event stepping
+
+Available macros in `macros/` (also copied into `build/macros/` by CMake):
+- `vis_setup.mac`
+- `vis_single.mac`
+- `vis_sequential.mac`
+- `vis.mac` (alias to `vis_setup.mac`)
+
+Runtime macro lookup:
+- Source-controlled macros live in `macros/`.
+- CMake copies them to `build/macros/`, the canonical runtime copy.
+- CMake also keeps flat `build/*.mac` copies for backward compatibility.
+- The executable searches current, build, and source macro locations, so visual
+  mode works from both `DVCS/` and `DVCS/build/`.
+
 $Id: README 92322 2015-08-27 14:54:05Z gcosmo $
 --------------------------------------------------
 

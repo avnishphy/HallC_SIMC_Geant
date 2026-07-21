@@ -94,14 +94,69 @@ G4bool B5HadCalorimeterSD::ProcessHits(G4Step* step, G4TouchableHistory*)
     G4StepPoint* prePoint = step->GetPreStepPoint();
     G4StepPoint* postPoint = step->GetPostStepPoint();
 
+    if (!prePoint || !postPoint) return false;
+
     G4TouchableHistory* touchable = (G4TouchableHistory*)(prePoint->GetTouchable());
+    if (!touchable || !touchable->GetHistory()) return false;
+
+    G4int touchDepth = touchable->GetHistory()->GetDepth();
+    if (touchDepth < 2) {
+        static G4int warnDepth = 0;
+        if (warnDepth < 5) {
+            G4cerr << "B5HadCalorimeterSD::ProcessHits: unexpected touchable depth="
+                   << touchDepth << G4endl;
+            ++warnDepth;
+        }
+        return false;
+    }
 
     // Determine hit ID based on crystal's row and column
     G4VPhysicalVolume* cellPhysical = touchable->GetVolume(2);
-    G4int rowNo = cellPhysical->GetCopyNo();         // 0 - 29
     G4VPhysicalVolume* columnPhysical = touchable->GetVolume(1);
-    G4int columnNo = columnPhysical->GetCopyNo();   // 0 - 35
+    if (!cellPhysical || !columnPhysical) {
+        static G4int warnNullVol = 0;
+        if (warnNullVol < 5) {
+            G4cerr << "B5HadCalorimeterSD::ProcessHits: null touchable volume while decoding crystal indices"
+                   << G4endl;
+            ++warnNullVol;
+        }
+        return false;
+    }
+
+    // Legacy geometries may store flattened crystal copy IDs (0..1079) at level 1.
+    G4int rawRow = cellPhysical->GetCopyNo();
+    G4int rawCol = columnPhysical->GetCopyNo();
+    G4int rowNo = rawRow;
+    G4int columnNo = rawCol;
+
+    if (rowNo < 0 || rowNo >= 30 || columnNo < 0 || columnNo >= 36) {
+        if (rawCol >= 0 && rawCol < 1080) {
+            rowNo = rawCol / 36;
+            columnNo = rawCol % 36;
+        }
+    }
+
+    if (rowNo < 0 || rowNo >= 30 || columnNo < 0 || columnNo >= 36) {
+        static G4int warnBadIndex = 0;
+        if (warnBadIndex < 10) {
+            G4cerr << "B5HadCalorimeterSD::ProcessHits: cannot decode crystal index from rawRow="
+                   << rawRow << " rawCol=" << rawCol << G4endl;
+            ++warnBadIndex;
+        }
+        return false;
+    }
+
     G4int hitID = columnNo + 36 * rowNo;            // 0 - 1079
+    if (!fHitsCollection || hitID < 0 || hitID >= fHitsCollection->entries()) {
+        static G4int warnBadHitID = 0;
+        if (warnBadHitID < 10) {
+            G4cerr << "B5HadCalorimeterSD::ProcessHits: invalid hitID=" << hitID
+                   << " entries=" << (fHitsCollection ? fHitsCollection->entries() : -1)
+                   << G4endl;
+            ++warnBadHitID;
+        }
+        return false;
+    }
 
     B5HadCalorimeterHit* hit = (*fHitsCollection)[hitID];
     if (!hit) return false;
@@ -192,10 +247,12 @@ G4bool B5HadCalorimeterSD::ProcessHits(G4Step* step, G4TouchableHistory*)
         hit->SetColumnID(columnNo);
         hit->SetRowID(rowNo);
         G4int depth = touchable->GetHistory()->GetDepth();
-        G4AffineTransform transform = touchable->GetHistory()->GetTransform(depth-2);
-        transform.Invert();
-        hit->SetRot(transform.NetRotation());
-        hit->SetPos(transform.NetTranslation());
+        if (depth >= 2) {
+            G4AffineTransform transform = touchable->GetHistory()->GetTransform(depth-2);
+            transform.Invert();
+            hit->SetRot(transform.NetRotation());
+            hit->SetPos(transform.NetTranslation());
+        }
     }
 
     // Add energy deposition to the per-cell hit record

@@ -1,0 +1,6 @@
+# run_batch.mac
+/run/initialize
+# Optional override before execution:
+#   /control/alias nev 1000
+/control/alias nev 1
+/run/beamOn {nev}

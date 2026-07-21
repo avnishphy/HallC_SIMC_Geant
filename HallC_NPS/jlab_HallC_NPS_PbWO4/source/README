@@ -1,5 +1,19 @@
 The NPS simulation is based on AnaEx02
 
+2026-04-08 update
+- CMake executable name: `NPS` (legacy text below may still mention `AnaEx02`).
+- Interactive mode auto-loads visualization setup macro when available.
+- Visualization macros:
+  - `vis_setup.mac` (setup only)
+  - `vis_single.mac` (setup + one event)
+  - `vis_sequential.mac` (setup + one-by-one stepping guidance)
+  - `vis.mac` (alias to `vis_setup.mac`)
+  - `v.mac` (legacy alias to `vis_single.mac`)
+  - `viss.mac` (legacy alias to `vis_sequential.mac`)
+- Typical runs:
+  - `./NPS` for interactive visualization
+  - `./NPS macros/mono_11GeV.mac` for batch
+
 
 $Id: README 92322 2015-08-27 14:54:05Z gcosmo $
 --------------------------------------------------

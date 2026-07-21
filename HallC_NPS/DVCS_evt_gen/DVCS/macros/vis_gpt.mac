@@ -1,24 +1,2 @@
-# vis.mac - simple visualization options
-/control/verbose 2
-/run/verbose 1
-/event/verbose 0
-/tracking/verbose 0
-
-# Initialize (if not already)
-# /run/initialize
-
-# Visualization
-/vis/open OGL 800x600+10+10
-/vis/drawVolume
-/vis/scene/add/trajectories smooth
-/vis/viewer/set/autoRefresh true
-/vis/scene/endOfEventAction accumulate
-
-# optional drawing settings
-/vis/attributes/forceWireframe false
-
-# set camera (theta phi)
-# /vis/viewer/set/viewpointThetaPhi 30 20
-
-# you can also call '/run/beamOn 1' here if you want to auto-run one event on opening
-# /run/beamOn 1
+# vis_gpt.mac (legacy alias)
+/control/execute vis_setup.mac

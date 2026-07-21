@@ -52,7 +52,7 @@ G4ThreadLocal G4Allocator<CrystalCoverHit>* CrystalCoverHitAllocator;
 CrystalCoverHit::CrystalCoverHit()\
   : G4VHit(), fColumnID(-1), fRowID(-1), fEdep(0.), fPos(0),
     //20171019(start)
-    fOP_String(-1),
+    fOP_String("-1"),
     //20171019(finish)
     //20171020(start)
     fOP_int(0),
@@ -67,7 +67,7 @@ CrystalCoverHit::CrystalCoverHit()\
 CrystalCoverHit::CrystalCoverHit(G4int iCol,G4int iRow)
   : G4VHit(), fColumnID(iCol), fRowID(iRow), fEdep(0.), fPos(0),
     //20171019(start)
-    fOP_String(-1),
+    fOP_String("-1"),
     //20171019(finish)
     //20171020(start)
     fOP_int(0),

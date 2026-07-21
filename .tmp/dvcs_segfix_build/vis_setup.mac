@@ -1,0 +1,32 @@
+# vis_setup.mac
+# Standard interactive visualization setup.
+# No events are generated here. Use:
+#   /run/beamOn 1
+# to inspect one event at a time.
+
+/control/verbose 2
+/run/verbose 1
+/event/verbose 0
+/tracking/verbose 0
+
+/run/initialize
+
+/vis/open OGL 800x600+10+10
+/vis/viewer/set/autoRefresh false
+/vis/verbose errors
+
+/vis/drawVolume
+/vis/viewer/set/viewpointThetaPhi -90. -89.9 degree
+
+/vis/scene/add/trajectories smooth
+/vis/modeling/trajectories/create/drawByCharge
+/vis/modeling/trajectories/drawByCharge-0/default/setDrawStepPts true
+/vis/modeling/trajectories/drawByCharge-0/default/setStepPtsSize 2
+
+# Show only the most recent event for one-by-one inspection.
+/vis/scene/endOfEventAction refresh
+
+/vis/viewer/set/autoRefresh true
+/vis/verbose warnings
+
+/control/echo "Visualization ready. Run /run/beamOn 1 to view one event."

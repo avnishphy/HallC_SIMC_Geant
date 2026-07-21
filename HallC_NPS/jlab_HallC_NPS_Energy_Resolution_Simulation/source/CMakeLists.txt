@@ -37,13 +37,10 @@ include(${ROOT_USE_FILE})
 # Locate sources and headers for this project
 #
 include_directories(${PROJECT_SOURCE_DIR}/include 
-                    ${PROJECT_SOURCE_DIR}/shared/include 
                     ${Geant4_INCLUDE_DIR}
                     ${ROOT_INCLUDE_DIR})
-file(GLOB sources ${PROJECT_SOURCE_DIR}/src/*.cc
-                  ${PROJECT_SOURCE_DIR}/shared/src/*.cc)
-file(GLOB headers ${PROJECT_SOURCE_DIR}/include/*.hh
-                  ${PROJECT_SOURCE_DIR}/shared/include/*.hh)
+file(GLOB sources ${PROJECT_SOURCE_DIR}/src/*.cc)
+file(GLOB headers ${PROJECT_SOURCE_DIR}/include/*.hh)
 
 #----------------------------------------------------------------------------
 # Add the executable, and link it to the Geant4 libraries
@@ -57,13 +54,24 @@ target_link_libraries(NPS_Energy_Resolution ${Geant4_LIBRARIES} ${ROOT_LIBRARIES
 # relies on these scripts being in the current working directory.
 #
 set(NPS_Energy_Resolution_SCRIPTS
-    /macros/vis.mac /macros/test.mac 
+  macros/vis.mac
+  macros/vis_setup.mac
+  macros/vis_single.mac
+  macros/vis_sequential.mac
+  macros/test.mac
   )
 
+file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/macros)
 foreach(_script ${NPS_Energy_Resolution_SCRIPTS})
+  get_filename_component(_script_name ${_script} NAME)
   configure_file(
     ${PROJECT_SOURCE_DIR}/${_script}
     ${PROJECT_BINARY_DIR}/${_script}
+    COPYONLY
+    )
+  configure_file(
+    ${PROJECT_SOURCE_DIR}/${_script}
+    ${PROJECT_BINARY_DIR}/${_script_name}
     COPYONLY
     )
 endforeach()

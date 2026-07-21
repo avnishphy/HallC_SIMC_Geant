@@ -1,3 +1,11 @@
+2026-04-08 update
+- CMake executable name: `glass`
+- Visualization macro workflow:
+	- `vis_setup.mac`
+	- `vis_single.mac`
+	- `vis_sequential.mac`
+	- `vis.mac` (alias to `vis_setup.mac`)
+
 20200210
 This is to see the energy resolution dependence of the glass scintillator
 on the size of the material.

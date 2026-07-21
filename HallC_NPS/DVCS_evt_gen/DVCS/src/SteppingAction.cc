@@ -123,13 +123,29 @@ void SteppingAction::UserSteppingAction(const G4Step* aStep)
 
     G4TouchableHistory* touchable
       = (G4TouchableHistory*)(aStep->GetPreStepPoint()->GetTouchable());
+    if (!touchable || !touchable->GetHistory()) return;
+
+    G4int depth = touchable->GetHistory()->GetDepth();
+    if (depth < 2) return;
 
     //from B5HadCalorimeterSD.cc
     //crystal numbering. column by column!
     G4VPhysicalVolume* cellPhysical = touchable->GetVolume(2);
-    G4int rowNo = cellPhysical->GetCopyNo();//0~29(30) in total
     G4VPhysicalVolume* columnPhysical = touchable->GetVolume(1);
-    G4int columnNo = columnPhysical->GetCopyNo();//0~35(36) in total
+    if (!cellPhysical || !columnPhysical) return;
+
+    G4int rawRow = cellPhysical->GetCopyNo();
+    G4int rawCol = columnPhysical->GetCopyNo();
+    G4int rowNo = rawRow;//0~29(30) in total
+    G4int columnNo = rawCol;//0~35(36) in total
+    if (rowNo < 0 || rowNo >= 30 || columnNo < 0 || columnNo >= 36) {
+      if (rawCol >= 0 && rawCol < 1080) {
+        rowNo = rawCol / 36;
+        columnNo = rawCol % 36;
+      }
+    }
+    if (rowNo < 0 || rowNo >= 30 || columnNo < 0 || columnNo >= 36) return;
+
     G4int hitID = columnNo+36*rowNo;//0~1079(1080)
     
     G4Track* track = aStep->GetTrack();

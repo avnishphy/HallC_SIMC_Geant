@@ -1,0 +1,5 @@
+# vis_single.mac
+# Open visualization and run exactly one event.
+
+/control/execute vis_setup.mac
+/run/beamOn 1
