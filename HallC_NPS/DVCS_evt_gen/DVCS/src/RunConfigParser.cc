@@ -4,11 +4,10 @@
 #include <algorithm>
 #include <cctype>
 #include <iostream>
-#include "TMath.h"
+#include <unordered_map>
 #include "G4SystemOfUnits.hh"
 
-// include your dvcsGlobals header
-#include "dvcsGlobals.hh" // adjust path if different
+#include "dvcsGlobals.hh"
 
 namespace RunConfig {
 
@@ -17,6 +16,30 @@ static inline std::string trim(const std::string& s) {
     if(b==std::string::npos) return "";
     auto e = s.find_last_not_of(" \t\r\n");
     return s.substr(b, e-b+1);
+}
+
+static std::vector<std::string> parseCsvRow(const std::string& line) {
+    std::vector<std::string> fields;
+    std::string field;
+    bool quoted = false;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        const char c = line[i];
+        if (c == '"') {
+            if (quoted && i + 1 < line.size() && line[i + 1] == '"') {
+                field.push_back('"');
+                ++i;
+            } else {
+                quoted = !quoted;
+            }
+        } else if (c == ',' && !quoted) {
+            fields.push_back(trim(field));
+            field.clear();
+        } else {
+            field.push_back(c);
+        }
+    }
+    fields.push_back(trim(field));
+    return fields;
 }
 
 RunConfigParser::RunConfigParser(const std::string& path) {
@@ -32,14 +55,86 @@ bool RunConfigParser::parseFile(const std::string& path) {
         return false;
     }
 
-    std::string header;
-    if(!std::getline(ifs, header)){
-        errorMsg_ = "Empty config file";
+    const auto dot = path.find_last_of('.');
+    const bool isCsv = dot != std::string::npos && path.substr(dot) == ".csv";
+    return isCsv ? parseCsvFile(ifs) : parseKinCFile(ifs);
+}
+
+bool RunConfigParser::parseCsvFile(std::ifstream& ifs) {
+    std::string headerLine;
+    if (!std::getline(ifs, headerLine)) {
+        errorMsg_ = "Empty CSV config file";
         return false;
     }
-    // we accept header line (ignored). Now parse rows.
+
+    const auto headers = parseCsvRow(headerLine);
+    std::unordered_map<std::string, std::size_t> column;
+    for (std::size_t i = 0; i < headers.size(); ++i) column[headers[i]] = i;
+
+    const std::vector<std::string> required = {
+        "new_kin", "kin_old", "target", "ebeam_gev", "hms_p_gev",
+        "hms_theta_deg", "nps_theta_deg", "nps_target_distance_cm", "source_run"
+    };
+    for (const auto& name : required) {
+        if (column.find(name) == column.end()) {
+            errorMsg_ = "CSV config missing required column: " + name;
+            return false;
+        }
+    }
+
     std::string line;
-    std::string last_name = "";
+    int lineNo = 1;
+    while (std::getline(ifs, line)) {
+        ++lineNo;
+        if (trim(line).empty()) continue;
+        const auto fields = parseCsvRow(line);
+        if (fields.size() != headers.size()) {
+            std::cerr << "RunConfigParser: skipping ragged CSV row " << lineNo
+                      << " (expected " << headers.size() << " fields, got "
+                      << fields.size() << ")\n";
+            continue;
+        }
+
+        const auto value = [&](const std::string& name) -> const std::string& {
+            return fields[column.at(name)];
+        };
+
+        Entry e;
+        e.name = value("kin_old");
+        e.displayName = value("new_kin");
+        e.target = value("target");
+        try {
+            e.runBegin = std::stoi(value("source_run"));
+            e.runEnd = e.runBegin; // CSV contains one authoritative source run per setting.
+            e.E_GeV = std::stod(value("ebeam_gev"));
+            e.hms_p_GeV = std::stod(value("hms_p_gev"));
+            e.hms_angle_deg = std::stod(value("hms_theta_deg"));
+            e.nps_angle_deg = std::stod(value("nps_theta_deg"));
+            e.calo_distance = std::stod(value("nps_target_distance_cm"));
+        } catch (const std::exception& ex) {
+            std::cerr << "RunConfigParser: CSV parse error on line " << lineNo
+                      << ": " << ex.what() << "\n";
+            continue;
+        }
+        entries_.push_back(e);
+    }
+
+    if (entries_.empty()) {
+        errorMsg_ = "No valid CSV entries parsed";
+        return false;
+    }
+    return true;
+}
+
+bool RunConfigParser::parseKinCFile(std::ifstream& ifs) {
+    std::string header;
+    if (!std::getline(ifs, header)) {
+        errorMsg_ = "Empty KinC config file";
+        return false;
+    }
+
+    std::string line;
+    std::string last_name;
     int lineNo = 1;
     while(std::getline(ifs, line)){
         ++lineNo;
@@ -98,6 +193,7 @@ bool RunConfigParser::parseFile(const std::string& path) {
 
         Entry e;
         e.name = cols[0];
+        e.displayName = e.name;
         try {
             e.runBegin = std::stoi(cols[1]);
             e.runEnd   = std::stoi(cols[2]);
@@ -117,10 +213,9 @@ bool RunConfigParser::parseFile(const std::string& path) {
     } // end lines
 
     if(entries_.empty()){
-        errorMsg_ = "No valid entries parsed";
+        errorMsg_ = "No valid KinC entries parsed";
         return false;
     }
-    valid_ = true;
     return true;
 }
 
@@ -139,19 +234,32 @@ std::optional<Entry> RunConfigParser::FindByName(const std::string& name) const 
 }
 
 bool RunConfigParser::ApplyConfigToGlobals(const Entry& e) const {
-    // NOTE: adjust variable names if your dvcsGlobals uses different names
-    // convert angles from degrees -> radians for Geant4 usage
+    // Both supported files store GeV, degrees, and calorimeter distance in cm.
     dvcsGlobals::Ebeam = e.E_GeV;
     dvcsGlobals::HMS_angle = e.hms_angle_deg * CLHEP::degree; 
     dvcsGlobals::HMS_momentum = e.hms_p_GeV;
     dvcsGlobals::Calo_angle = e.nps_angle_deg * CLHEP::degree;
-    // Calo_distance units: assume file value is [cm]. dvcsGlobals used earlier expects [cm].
     dvcsGlobals::Calo_distance = e.calo_distance * CLHEP::cm; 
-    // store run number for convenience
-    dvcsGlobals::run_number = e.runBegin; // or pick a canonical value (begin). You could store the full entry in dvcsGlobals if desired.
 
-    // optional: print to console for confirmation
-    std::cout << "RunConfigParser: Applied config '" << e.name << "' runs " << e.runBegin << "-" << e.runEnd
+    // Target is present in the CSV. Legacy KinC has no target column, so its
+    // empty value deliberately preserves the existing global defaults.
+    std::string target = e.target;
+    std::transform(target.begin(), target.end(), target.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+    if (target == "LH2") {
+        dvcsGlobals::target_type = 0;
+        dvcsGlobals::target_gen_proc_type = 0;
+    } else if (target == "LD2") {
+        dvcsGlobals::target_type = 1;
+        dvcsGlobals::target_gen_proc_type = 2;
+    } else if (!target.empty()) {
+        std::cerr << "RunConfigParser: unsupported target '" << e.target << "'\n";
+        return false;
+    }
+
+    // Echo applied physics values for user verification before transport starts.
+    std::cout << "RunConfigParser: applied '" << e.name << "' (" << e.displayName
+              << ") runs " << e.runBegin << "-" << e.runEnd
               << " E=" << e.E_GeV << " HMS_p=" << e.hms_p_GeV << " HMS_angle(deg)=" << e.hms_angle_deg
               << " NPS_angle(deg)=" << e.nps_angle_deg << " calo_dist (cm)=" << e.calo_distance << "\n";
 
@@ -161,13 +269,19 @@ bool RunConfigParser::ApplyConfigToGlobals(const Entry& e) const {
 bool RunConfigParser::LoadAndApplyByRun(int run) const {
     auto maybe = FindByRun(run);
     if(!maybe) return false;
-    return ApplyConfigToGlobals(*maybe);
+    if (!ApplyConfigToGlobals(*maybe)) return false;
+    // Keep exact requested run for NPS_SOFT database validity. Interval lookup
+    // still uses inclusive KinC bounds; CSV entries have begin == end.
+    dvcsGlobals::run_number = run;
+    return true;
 }
 
 bool RunConfigParser::LoadAndApplyByName(const std::string& name) const {
     auto maybe = FindByName(name);
     if(!maybe) return false;
-    return ApplyConfigToGlobals(*maybe);
+    if (!ApplyConfigToGlobals(*maybe)) return false;
+    dvcsGlobals::run_number = maybe->runBegin;
+    return true;
 }
 
 } // namespace RunConfig

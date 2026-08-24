@@ -92,6 +92,11 @@ public:
   G4double GetDetectorThickness();
   G4Material* GetDetectorMaterial();                 
   G4LogicalVolume* GetLogicDetector();      
+
+  // Authoritative center-to-center crystal spacing used by both placement and
+  // truth-hit coordinate reconstruction.
+  G4double GetCrystalPitchX() const;
+  G4double GetCrystalPitchY() const;
                        
 private:
   const G4double     inch = 2.54*cm;
@@ -361,4 +366,3 @@ private:
 
 
 #endif
-

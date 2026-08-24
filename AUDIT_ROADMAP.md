@@ -1,5 +1,12 @@
 # Repository Audit and Implementation Roadmap
 
+> Status update (2026-08): shared-CSV/legacy-KinC selection, explicit config/run
+> CLI options, exact selected-run propagation, 21.69 mm detector-authoritative
+> truth-hit pitch, named 1.04 scale, and generated-file ignores are implemented.
+> Geant4 SWIF2 submission is now implemented with isolated jobs and exact ROOT
+> output mapping. Timing, photon cluster-z, and physical-vs-database geometry
+> reconciliation remain outside this update.
+
 # SECTION A - Full repository audit and roadmap
 
 ## 1. Executive summary
@@ -25,8 +32,10 @@ The framework has a working core, sample SIMC ROOT inputs, CMake support for the
 
 1. External SIMC produces a ROOT file, usually tree `h10`, with photon branches such as `Pgamma1x/y/z`, `Egamma1`, `Pgamma2x/y/z`, `Egamma2`, and `vtx_x/y/z`.
 2. User builds `NPS_SOFT` and the active `DVCS` GEANT4 executable.
-3. `DVCS` reads `../../../../KinC_list.txt`, prints KinC entries, and prompts for a run number.
-4. `RunConfigParser` applies beam energy, HMS/NPS angle settings, NPS distance, and run-range metadata.
+3. `DVCS` asks for the shared `nps_simulation_kinematics.csv` (default) or
+   legacy `KinC_list.txt`, then prints parsed settings and accepts a run.
+4. `RunConfigParser` applies beam/HMS/NPS settings, distance, target when the
+   CSV supplies it, and exact selected run. KinC range lookup remains inclusive.
 5. `PrimaryGeneratorAction` reads one SIMC entry per event and creates two GEANT4 gamma primaries. Pi0 decay is not done in GEANT4; it is assumed to have happened upstream in SIMC.
 6. `DetectorConstruction` builds the target, chamber, optional sweeping magnet, NPS PbWO4 calorimeter, PMT/wrapping volumes, and flux volumes.
 7. `B5HadCalorimeterSD` records crystal energy deposits and photon hit metadata.
@@ -39,8 +48,10 @@ The framework has a working core, sample SIMC ROOT inputs, CMake support for the
 - `HallC_NPS/CMakeLists.txt`: top-level CMake entry; adds the DVCS subdirectory; accepts optional `NPS_SOFT_ROOT`.
 - `HallC_NPS/DVCS_evt_gen/DVCS/CMakeLists.txt`: builds executable `DVCS`; finds Geant4 and ROOT; links optional `libDVCS` and `libTDVCSGlobal2`; copies macros into the build directory.
 - `HallC_NPS/DVCS_evt_gen/DVCS/GNUmakefile`: legacy build file with old absolute paths; likely stale.
-- `main.cc`: command-line parsing, KinC loading, interactive run-number prompt, GEANT4 setup, batch and visualization modes.
-- `RunConfigParser`: parses `KinC_list.txt`; applies selected run-range values to global configuration.
+- `main.cc`: command-line parsing, CSV/KinC source selection, run prompt,
+  GEANT4 setup, batch, and visualization modes.
+- `RunConfigParser`: parses shared CSV or legacy KinC format and applies the
+  selected setting to global configuration.
 - `dvcsGlobals`: process-wide mutable global configuration.
 - `PrimaryGeneratorAction`: SIMC ROOT reader; creates two photon primaries; applies implicit coordinate and sign convention.
 - `DetectorConstruction`: hard-coded Hall C/NPS geometry and materials.
@@ -56,22 +67,26 @@ The framework has a working core, sample SIMC ROOT inputs, CMake support for the
 
 ## 5. Hard-coded assumptions and hidden dependencies
 
-- `DVCS` assumes the runtime current working directory lets it find `../../../../KinC_list.txt`.
-- Batch mode still requires interactive run-number input unless stdin supplies it.
+- Default paths are derived from the compiled repository location; shared CSV
+  path can be overridden by `NPS_SIMULATION_KINEMATICS_CSV` or `--config-file`.
+- Runs can be selected noninteractively with `--config-source` and `--run`.
 - Runtime needs `NPS_SOFT` in the environment; build uses separate `NPS_SOFT_ROOT`.
 - The documented SIMC source/version is external to this repository.
 - `NPS_SOFT` geometry/calibration may come from a live MySQL database rather than versioned local files.
 - `SimpleField.cc` references an absolute field-map path under an old user/work area.
 - Output ROOT files are opened with `RECREATE`, so existing outputs can be overwritten silently.
 - Required SIMC branches are assumed rather than validated.
-- Important constants are hard-coded: trigger threshold `0.5`, clustering window `[-5,+5]`, energy scale `1.04`, crystal pitch `2.113 cm`, default cut `0.7 mm`, target and geometry dimensions.
+- Important constants remain: trigger threshold `0.5`, clustering window
+  `[-5,+5]`, named energy scale `1.04`, default cut `0.7 mm`, target and geometry
+  dimensions. Crystal pitch is detector-derived (`21.69 mm`), not duplicated.
 - The detector and reconstruction state uses static data and assumes serial execution.
 
 ## 6. Current caveats and risks
 
 - Working tree is dirty and contains generated artifacts, so current baseline state is ambiguous.
-- README build path for `NPS_SOFT_ROOT` may need verification from the documented build directory.
-- Selected run number and KinC interval-begin run number may not be handled consistently.
+- README build path for `NPS_SOFT_ROOT` is verified relative to `DVCS/build`.
+- KinC interval lookup is inclusive and exact selected run is now retained for
+  NPS_SOFT database validity.
 - NPS-to-Hall rotation code exists but appears bypassed in photon generation.
 - Pi0 decay handling is external and not documented as a formal interface.
 - Text init files exist, but current code may use live database geometry/calibration.
@@ -206,9 +221,10 @@ Produce installation, setup, build, run, analysis, plotting, validation, trouble
 - Are prototype directories still maintained or archival?
 - Which plotting macros are part of the official analysis chain?
 
-## 11. Approval gate
+## 11. Change control
 
-I will not make any code changes until you explicitly approve the implementation plan.
+Implement remaining stages only after explicit approval. Preserve scientific
+behavior unless a physics change is specifically approved and validated.
 
 # SECTION B - Compact Gemma 4 31B implementation packet
 

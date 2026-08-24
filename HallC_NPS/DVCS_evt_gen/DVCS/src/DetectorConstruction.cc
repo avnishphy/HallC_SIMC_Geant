@@ -2760,4 +2760,15 @@ G4VPhysicalVolume* DetectorConstruction::ConstructVolumes()
     return fLogicDetector;
   }
 
+  G4double DetectorConstruction::GetCrystalPitchX() const
+  {
+    // 20.5 mm crystal + two 0.095 mm wrapper layers + 1.0 mm gap = 21.69 mm.
+    return fCrystal_X + 2*fWrapThickness + gap;
+  }
+
+  G4double DetectorConstruction::GetCrystalPitchY() const
+  {
+    return fCrystal_Y + 2*fWrapThickness + gap;
+  }
+
   //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

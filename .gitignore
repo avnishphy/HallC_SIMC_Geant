@@ -1,5 +1,8 @@
 # Build directories
 HallC_NPS/DVCS_evt_gen/DVCS/build
+HallC_NPS/**/build*/
+.tmp/
+compile_commands.json
 
 # Geant4 / ROOT generated
 *.root
@@ -9,6 +12,8 @@ HallC_NPS/DVCS_evt_gen/DVCS/build
 *.a
 *.o
 *.d
+*.pcm
+*.rootmap
 
 # NPS_SOFT biglib products
 NPS_SOFT/lib/

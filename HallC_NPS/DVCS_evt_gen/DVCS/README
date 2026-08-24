@@ -17,6 +17,27 @@ Runtime macro lookup:
 - The executable searches current, build, and source macro locations, so visual
   mode works from both `DVCS/` and `DVCS/build/`.
 
+2026-08 configuration/geometry update
+- Startup asks for `nps_simulation_kinematics.csv` (default) or legacy
+  `KinC_list.txt`. Use `--config-source csv|kinc`, `--config-file PATH`, and
+  `--run RUN` for explicit local execution.
+- `NPS_SIMULATION_KINEMATICS_CSV` overrides the default shared CSV path.
+- CSV run selection is exact through `source_run`; KinC run ranges remain
+  inclusive. Exact selected run is used for NPS_SOFT database lookup.
+- DetectorConstruction owns crystal pitch: 20.5 mm crystal + 2*0.095 mm wrap
+  + 1.0 mm gap = 21.69 mm. Photon truth-hit X/Y uses this runtime pitch and the
+  same 30x36 placement formula.
+- Historical `1.04` block-energy compensation remains. It affects `edep[]`,
+  trigger input, and `clust_E[]`; it does not affect copied SIMC branches or
+  truth-matched `phot1_Ecal`/`phot2_Ecal`.
+- Repository-root `submit_geant4_swif2.sh` submits one job per SIMC ROOT file,
+  with all/single kinematic and all/single channel selection. Runtime tar is
+  built and validated on submit host; ROOT output uses exact SWIF file mapping.
+
+See repository-root `README.md` for authoritative build, run, branch, unit, and
+configuration documentation. Material below is retained as upstream Geant4
+example history and does not describe the current NPS workflow.
+
 $Id: README 92322 2015-08-27 14:54:05Z gcosmo $
 --------------------------------------------------
 

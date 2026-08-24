@@ -1,4 +1,5 @@
 #pragma once
+#include <iosfwd>
 #include <string>
 #include <vector>
 #include <optional>
@@ -7,6 +8,8 @@ namespace RunConfig {
 
 struct Entry {
     std::string name;
+    std::string displayName;
+    std::string target;
     int runBegin = -1;
     int runEnd = -1;
     double shms_angle_deg = 0.0;
@@ -14,15 +17,18 @@ struct Entry {
     double hms_p_GeV = 0.0;
     double hms_angle_deg = 0.0;
     double nps_angle_deg = 0.0;
-    double calo_distance = 0.0; // as in file (units: user must confirm) - default: cm
+    double calo_distance = 0.0; // cm in both supported formats
     int hms_pol = 0;
 };
 
 class RunConfigParser {
 public:
-    // parse the text file; returns true on success
+    // Format is selected from the file extension: .csv uses the shared
+    // simulation table; other files use the legacy whitespace KinC format.
     explicit RunConfigParser(const std::string& path);
     bool IsValid() const;
+
+    const std::vector<Entry>& Entries() const { return entries_; }
 
     // find entry covering given run number (runBegin <= run <= runEnd)
     // returns std::nullopt if not found
@@ -46,6 +52,8 @@ public:
 
 private:
     bool parseFile(const std::string& path);
+    bool parseCsvFile(std::ifstream& input);
+    bool parseKinCFile(std::ifstream& input);
     std::vector<Entry> entries_;
     bool valid_ = false;
     std::string errorMsg_;

@@ -1,12 +1,10 @@
 // main.cc
 #include <iostream>
 #include <string>
-#include <memory>
-#include <limits> // for std::numeric_limits
-#include <fstream>
 #include <sstream>
 #include <vector>
 #include <iomanip> // for setw
+#include <cstdlib>
 
 // ROOT
 #include "TFile.h"
@@ -40,78 +38,36 @@
 #define DVCS_BINARY_DIR "."
 #endif
 
+#ifndef DVCS_REPOSITORY_DIR
+#define DVCS_REPOSITORY_DIR "."
+#endif
+
 // ------------------------------------------------------------
-// Print a simple kinclist showing: run_number   <kinematic description>
-// - skips blank lines and comment lines (starting with # or //)
-// - assumes the kinclist entries are one-per-line; the first token is treated
-//   as the run number, and the remainder of the line as a kinematic descriptor.
-// - prints up to maxPrint lines (default 200), and shows a count of total non-empty entries.
-static void PrintKinCList(const std::string& kinclistPath, std::size_t maxPrint = 200)
+// Print already-parsed values so CSV and KinC users see the same units/columns.
+static void PrintRunConfigs(const RunConfig::RunConfigParser& config,
+                            std::size_t maxPrint = 200)
 {
-    std::ifstream in(kinclistPath);
-    if (!in.is_open()) {
-        std::cerr << "Warning: cannot open KinC list file: " << kinclistPath << "\n";
-        return;
-    }
-
-    std::string line;
+    const auto& entries = config.Entries();
+    std::cout << "\nAvailable kinematic settings:\n";
+    std::cout << std::left << std::setw(13) << "Run(s)"
+              << std::setw(18) << "KinC" << std::setw(15) << "New kin"
+              << "Ebeam  HMS_P  HMS_deg  NPS_deg  Dist_cm\n";
+    std::cout << "-------------------------------------------------------------------------------\n";
     std::size_t printed = 0;
-    std::size_t totalNonEmpty = 0;
-
-    // First pass counts non-empty, non-comment lines so we can display total.
-    // (We re-open the file for actual printing.)
-    {
-        std::ifstream in2(kinclistPath);
-        while (std::getline(in2, line)) {
-            // trim leading whitespace
-            std::string tmp = line;
-            auto pos = tmp.find_first_not_of(" \t\r\n");
-            if (pos == std::string::npos) continue; // blank
-            tmp = tmp.substr(pos);
-            if (tmp.rfind("#", 0) == 0) continue;   // comment starting with #
-            if (tmp.rfind("//", 0) == 0) continue;  // comment starting with //
-            totalNonEmpty++;
-        }
+    for (const auto& e : entries) {
+        std::ostringstream runs;
+        runs << e.runBegin;
+        if (e.runEnd != e.runBegin) runs << "-" << e.runEnd;
+        std::cout << std::left << std::setw(13) << runs.str()
+                  << std::setw(18) << e.name << std::setw(15) << e.displayName
+                  << std::fixed << std::setprecision(3)
+                  << std::setw(7) << e.E_GeV << std::setw(7) << e.hms_p_GeV
+                  << std::setw(9) << e.hms_angle_deg << std::setw(9) << e.nps_angle_deg
+                  << e.calo_distance << "\n";
+        if (++printed >= maxPrint) break;
     }
-
-    // Print header
-    std::cout << "\n===== KinC list (showing up to " << maxPrint << " entries) =====\n";
-    std::cout << std::left << std::setw(12) << "RunNumber" << "  " << "Kinematic (rest of line)\n";
-    std::cout << "--------------------------------------------------------\n";
-
-    // Re-open and print entries
-    in.clear();
-    in.seekg(0);
-    while (std::getline(in, line)) {
-        // trim leading whitespace
-        auto pos = line.find_first_not_of(" \t\r\n");
-        if (pos == std::string::npos) continue; // blank
-        std::string tmp = line.substr(pos);
-        if (tmp.rfind("#", 0) == 0) continue;   // comment
-        if (tmp.rfind("//", 0) == 0) continue;  // comment
-
-        // parse first token as run number, remainder as kinematic description
-        std::istringstream iss(tmp);
-        std::string runToken;
-        if (!(iss >> runToken)) continue;
-        std::string kinDesc;
-        std::getline(iss, kinDesc);
-        // trim leading spaces from kinDesc
-        auto kinPos = kinDesc.find_first_not_of(" \t");
-        if (kinPos != std::string::npos) kinDesc = kinDesc.substr(kinPos);
-        else kinDesc = "";
-
-        // print
-        std::cout << std::left << std::setw(12) << runToken << "  " << kinDesc << "\n";
-
-        printed++;
-        if (printed >= maxPrint) break;
-    }
-    std::cout << "--------------------------------------------------------\n";
-    std::cout << "Displayed " << printed << " entries";
-    if (totalNonEmpty > printed) std::cout << " (of " << totalNonEmpty << " total non-empty entries)";
-    std::cout << ".\n\n";
-    in.close();
+    if (entries.size() > printed) std::cout << "... " << entries.size() - printed << " more\n";
+    std::cout << "\n";
 }
 
 void print_usage(const char* prog)
@@ -120,12 +76,16 @@ void print_usage(const char* prog)
         << "Usage:\n"
         << "  " << prog
         << " <simc.root> [tree] [nEvents] [out.root] "
-        << "[--batch] [--vis|--vis-single|--vis-seq]\n"
+        << "[--batch] [--vis|--vis-single|--vis-seq] "
+        << "[--config-source csv|kinc] [--config-file PATH] [--run RUN]\n"
         << "\n"
         << "Visualization options:\n"
         << "  --vis         : open UI with detector view, event stepping manual via /run/beamOn 1\n"
         << "  --vis-single  : open UI and run exactly one event automatically\n"
-        << "  --vis-seq     : open UI in sequential stepping mode (one event at a time)\n";
+        << "  --vis-seq     : open UI in sequential stepping mode (one event at a time)\n"
+        << "  --config-source: choose shared CSV or legacy KinC list (prompted if omitted)\n"
+        << "  --config-file : override selected configuration path\n"
+        << "  --run         : select run without the run-number prompt\n";
 }
 
 static void ConfigureMacroSearchPath(G4UImanager* uiManager)
@@ -171,41 +131,9 @@ int main(int argc, char** argv)
     bool        batch_mode  = false;
     bool        visualize   = false;
     std::string vis_macro   = "vis_setup.mac";
-
-    // ------------------- Parse run config -------------------
-    // KinC list location (same relative path you've been using)
-    const std::string kinclist_path = "../../../../KinC_list.txt";
-    RunConfig::RunConfigParser cfg(kinclist_path);
-    if (!cfg.IsValid()) {
-        std::cerr << "RunConfigParser failed: " << cfg.ErrorMessage() << "\n";
-        // still try to print the KinC file directly so user can inspect it
-        PrintKinCList(kinclist_path, 200);
-        return 4;
-    }
-
-    // Print a compact kinclist to let the user choose a run number
-    PrintKinCList(kinclist_path, 200);
-
-    // Ask user for run number
-    int runNumber = 0;
-    std::cout << "Enter run number to simulate: ";
-    if(!(std::cin >> runNumber)) {
-        std::cerr << "Failed to read run number.\n";
-        return 6;
-    }
-
-    // consume leftover newline so getline works below
-    std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-
-    // Load and apply the config
-    if (!cfg.LoadAndApplyByRun(runNumber)) {
-        std::cerr << "ERROR: run number " << runNumber << " not found in KinC list\n";
-        return 5;
-    }
-
-    // set dvcsGlobals flags as before
-    dvcsGlobals::SM_field_flag = false;
-    dvcsGlobals::SM_field_str  = 1.;
+    std::string configSource;
+    std::string configFile;
+    int         runNumber = -1;
 
     // ---------------- Argument parsing ----------------
     if (argc < 2) {
@@ -228,6 +156,30 @@ int main(int argc, char** argv)
 
         for (int i = 1; i < argc; ++i) {
             std::string a = argv[i];
+            if (a == "--help" || a == "-h") {
+                print_usage(argv[0]);
+                return 0;
+            }
+            if (a == "--config-source" || a == "--config-file" || a == "--run") {
+                if (i + 1 >= argc) {
+                    std::cerr << "ERROR: " << a << " requires a value.\n";
+                    return 1;
+                }
+                const std::string value = argv[++i];
+                if (a == "--config-source") {
+                    configSource = value;
+                } else if (a == "--config-file") {
+                    configFile = value;
+                } else {
+                    try {
+                        runNumber = std::stoi(value);
+                    } catch (const std::exception&) {
+                        std::cerr << "ERROR: --run requires an integer, got '" << value << "'.\n";
+                        return 1;
+                    }
+                }
+                continue;
+            }
             if (a == "--batch") {
                 batch_mode = true;
                 continue;
@@ -277,6 +229,80 @@ int main(int argc, char** argv)
             std::cout << "Note: both --batch and visualization flags were set; running in visualization mode.\n";
         }
     }
+
+    // ---------------- Kinematic configuration ----------------
+    const char* csvEnv = std::getenv("NPS_SIMULATION_KINEMATICS_CSV");
+    const std::string csvPath = csvEnv && *csvEnv
+        ? csvEnv
+        : std::string(DVCS_REPOSITORY_DIR)
+          + "/../nps_analysis/pi0_analysis/root_analysis_env_main/config/"
+            "nps_simulation_kinematics.csv";
+    const std::string kincPath = std::string(DVCS_REPOSITORY_DIR) + "/KinC_list.txt";
+
+    if (configSource.empty()) {
+        std::cout
+            << "\nSelect kinematic configuration source:\n"
+            << "  1. nps_simulation_kinematics.csv [default]\n"
+            << "     " << csvPath << "\n"
+            << "  2. KinC_list.txt (legacy)\n"
+            << "     " << kincPath << "\n"
+            << "Selection [1]: ";
+        std::string selection;
+        if (!std::getline(std::cin, selection)) {
+            std::cin.clear();
+            selection.clear();
+        }
+        if (selection.empty() || selection == "1") {
+            configSource = "csv";
+        } else if (selection == "2") {
+            configSource = "kinc";
+        } else {
+            std::cerr << "ERROR: selection must be 1 or 2.\n";
+            return 4;
+        }
+    }
+
+    if (configSource != "csv" && configSource != "kinc") {
+        std::cerr << "ERROR: --config-source must be 'csv' or 'kinc'.\n";
+        return 4;
+    }
+    if (configFile.empty()) configFile = configSource == "csv" ? csvPath : kincPath;
+
+    RunConfig::RunConfigParser cfg(configFile);
+    if (!cfg.IsValid()) {
+        std::cerr << "ERROR: configuration load failed: " << cfg.ErrorMessage() << "\n";
+        if (configSource == "csv") {
+            std::cerr << "Set NPS_SIMULATION_KINEMATICS_CSV or pass --config-file PATH.\n";
+        }
+        return 4;
+    }
+    std::cout << "Using configuration: " << configFile << "\n";
+    PrintRunConfigs(cfg);
+
+    if (runNumber < 0) {
+        std::cout << "Enter run number to simulate: ";
+        std::string runText;
+        if (!std::getline(std::cin, runText)) {
+            std::cerr << "Failed to read run number.\n";
+            return 6;
+        }
+        try {
+            runNumber = std::stoi(runText);
+        } catch (const std::exception&) {
+            std::cerr << "Run number must be an integer.\n";
+            return 6;
+        }
+    }
+
+    if (!cfg.LoadAndApplyByRun(runNumber)) {
+        std::cerr << "ERROR: run " << runNumber << " not found in " << configFile << "\n";
+        return 5;
+    }
+
+    // Sweeping magnet remains disabled in this workflow; config files do not
+    // currently control field maps or strength.
+    dvcsGlobals::SM_field_flag = false;
+    dvcsGlobals::SM_field_str  = 1.;
 
     // ---------------- SIMC sanity check ----------------
     TFile* tf = TFile::Open(simc_path.c_str(), "READ");
@@ -355,7 +381,7 @@ int main(int argc, char** argv)
     runManager->SetUserAction(runAction);
 
     // ---------------- EventAction ----------------
-    auto* eventAction = new EventAction(runAction, histo);
+    auto* eventAction = new EventAction(runAction, histo, detector);
     runManager->SetUserAction(eventAction);
 
     // ---------------- Primary generator ----------------

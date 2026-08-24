@@ -1,6 +1,7 @@
 // EventAction.cc
 
 #include "EventAction.hh"
+#include "DetectorConstruction.hh"
 
 #include "RunAction.hh"
 #include "HistoManager.hh"
@@ -33,17 +34,23 @@
 #include <ctime>
 #include <vector>
 
-#include "TCaloGeometry.h"
-
 #include "G4SystemOfUnits.hh"                // Geant4 units (mm, cm, GeV, etc.)
 #include "CLHEP/Units/SystemOfUnits.h"      // CLHEP::cm used elsewhere in code
 
 time_t t_int = time(0); // initial time stamp
 
-EventAction::EventAction(RunAction* run, HistoManager* histo)
+namespace {
+// Historical NPS reconstruction compensation. Applied to block energies before
+// trigger/clustering; SIMC truth and ancestry-tagged phot{1,2}_Ecal stay raw.
+constexpr G4double kCaloEnergyScale = 1.04;
+}
+
+EventAction::EventAction(RunAction* run, HistoManager* histo,
+                         const DetectorConstruction* detector)
     : G4UserEventAction(),
       fRunAct(run),
       fHistoManager(histo),
+      fDetector(detector),
       fEvtNb(-1),
       fHCHCID(-1),
       fHadCalEdep(),
@@ -225,7 +232,7 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         if (!hit) continue;
         G4double eDep = hit->GetEdep();           // Geant4 energy units (MeV)
         G4int PID = hit->GetPID();
-        fHadCalEdep[i] = eDep * 1.04;             // keep same array semantics (MeV * 1.04)
+        fHadCalEdep[i] = eDep * kCaloEnergyScale; // corrected MeV written to edep[]
         fPID[i] = PID;
 
         CrystalCoverHit* CChit = nullptr;
@@ -267,8 +274,8 @@ void EventAction::EndOfEventAction(const G4Event* evt)
                 B5HadCalorimeterHit* hit = (*hcHC)[ib];
                 if (hit) eDep_mev = hit->GetEdep();
             }
-            // Apply 4% compensation and convert MeV -> GeV (TCaloEvent in your snippets expects GeV for pulses)
-            G4double energy_GeV = eDep_mev * 1.04 * 1e-3;
+            // NPS_SOFT receives corrected GeV, so trigger and clust_E use same scale.
+            G4double energy_GeV = eDep_mev * kCaloEnergyScale * 1e-3;
 
             // Add block and populate
             TCaloBlock* block = calo_evt->AddBlock(ib);
@@ -281,7 +288,7 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         // Run trigger simulation and clustering using TCaloEvent API
         const G4double triggerThreshold_GeV = 0.5; // threshold in GeV
         calo_evt->TriggerSim(triggerThreshold_GeV); // may modify internal block selection
-        calo_evt->DoClustering(-5.0, 5.0);          // time window [-3, +3] ns
+        calo_evt->DoClustering(-5.0, 5.0);          // time window [-5, +5] ns
 
         // Analyze each cluster (compute centers etc.)
         G4int Nb_clust = calo_evt->GetNbClusters();
@@ -324,7 +331,7 @@ void EventAction::EndOfEventAction(const G4Event* evt)
     // --------------------------
     // TRUE HIT POSITIONS (Geant4):
     // - Use the exact Geant4 local hit position on the crystal front face.
-    // - Use TCaloGeometry ONLY for detector geometry (block centers incl. wrapping/gaps).
+    // - Add block centers from DetectorConstruction's physical placement/pitch.
     // - No clustering weights or cluster-derived positions are used here.
     // --------------------------
     bool phot1_hit = B5HadCalorimeterSD::Phot1Hit();
@@ -338,13 +345,7 @@ void EventAction::EndOfEventAction(const G4Event* evt)
     double phot1_Ecal = -999., phot2_Ecal = -999.;
     int    phot1_clustSize = -1, phot2_clustSize = -1;
 
-    // Access the TCaloGeometry used by the clustering algorithm
-    TCaloGeometry* geom = nullptr;
-    if (calo_evt) {
-        geom = calo_evt->GetGeometry();
-    }
-
-    if (phot1_hit && geom) {
+    if (phot1_hit && fDetector) {
         auto p1_local = B5HadCalorimeterSD::Phot1Pos();
         const int columnNo = B5HadCalorimeterSD::Phot1Col();
         const int rowNo = B5HadCalorimeterSD::Phot1Row();
@@ -354,17 +355,13 @@ void EventAction::EndOfEventAction(const G4Event* evt)
             const double localX_cm = p1_local.x() / CLHEP::cm;
             const double localY_cm = p1_local.y() / CLHEP::cm;
 
-            // Nominal block center positions (2.113 cm spacing, left-bottom origin)
-            // Block (col, row) center = (col * 2.113, row * 2.113) in cm
-            const double blockCenterX_cm = rowNo * 2.113;
-            const double blockCenterY_cm = columnNo * 2.113;
-
-            // True Geant hit position (block center + local offset)
-            const double hitX_cm = -1 * (blockCenterX_cm - localX_cm - (30*2.113/2.)); // shift to center around 0
-            const double hitY_cm = blockCenterY_cm + localY_cm - (36*2.113/2.); // shift to center around 0
-
-            phot1_hitx = hitX_cm;
-            phot1_hity = hitY_cm;
+            // Match DetectorConstruction placement exactly:
+            // X=(14.5-row)*pitchX, Y=(column-17.5)*pitchY. The pitch getters
+            // include crystal, both wrapper layers, and inter-crystal gap.
+            const double pitchX_cm = fDetector->GetCrystalPitchX() / CLHEP::cm;
+            const double pitchY_cm = fDetector->GetCrystalPitchY() / CLHEP::cm;
+            phot1_hitx = (14.5 - rowNo) * pitchX_cm + localX_cm;
+            phot1_hity = (columnNo - 17.5) * pitchY_cm + localY_cm;
             phot1_hitz = p1_local.z() / CLHEP::cm;  // front-face z in cm
         } else {
             G4cout << "WARNING: phot1 hit missing block indices; using local position only" << G4endl;
@@ -377,9 +374,8 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         phot1_vx = fVertex_x;
         phot1_vy = fVertex_y;
         phot1_vz = fVertex_z;
-    } else if (phot1_hit && !geom) {
-        // Fallback if geometry not available (should not happen)
-        G4cout << "WARNING: phot1 hit but TCaloGeometry not available" << G4endl;
+    } else if (phot1_hit && !fDetector) {
+        G4cout << "WARNING: phot1 hit but DetectorConstruction not available" << G4endl;
         auto p1 = B5HadCalorimeterSD::Phot1Pos();
         phot1_hitx = p1.x() / CLHEP::cm;
         phot1_hity = p1.y() / CLHEP::cm;
@@ -390,7 +386,7 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         phot1_vz = fVertex_z;
     }
 
-    if (phot2_hit && geom) {
+    if (phot2_hit && fDetector) {
         auto p2_local = B5HadCalorimeterSD::Phot2Pos();
         const int columnNo = B5HadCalorimeterSD::Phot2Col();
         const int rowNo = B5HadCalorimeterSD::Phot2Row();
@@ -399,16 +395,10 @@ void EventAction::EndOfEventAction(const G4Event* evt)
             const double localX_cm = p2_local.x() / CLHEP::cm;
             const double localY_cm = p2_local.y() / CLHEP::cm;
 
-            // Nominal block center positions (2.113 cm spacing, left-bottom origin)
-            const double blockCenterX_cm = rowNo * 2.113;
-            const double blockCenterY_cm = columnNo * 2.113;
-
-            // True Geant hit position
-            const double hitX_cm = -1 * (blockCenterX_cm - localX_cm - (30*2.113/2.)); // shift to center around 0
-            const double hitY_cm = blockCenterY_cm + localY_cm - (36*2.113/2.); // shift to center around 0
-
-            phot2_hitx = hitX_cm;
-            phot2_hity = hitY_cm;
+            const double pitchX_cm = fDetector->GetCrystalPitchX() / CLHEP::cm;
+            const double pitchY_cm = fDetector->GetCrystalPitchY() / CLHEP::cm;
+            phot2_hitx = (14.5 - rowNo) * pitchX_cm + localX_cm;
+            phot2_hity = (columnNo - 17.5) * pitchY_cm + localY_cm;
             phot2_hitz = p2_local.z() / CLHEP::cm;
         } else {
             G4cout << "WARNING: phot2 hit missing block indices; using local position only" << G4endl;
@@ -421,8 +411,8 @@ void EventAction::EndOfEventAction(const G4Event* evt)
         phot2_vx = fVertex_x;
         phot2_vy = fVertex_y;
         phot2_vz = fVertex_z;
-    } else if (phot2_hit && !geom) {
-        G4cout << "WARNING: phot2 hit but TCaloGeometry not available" << G4endl;
+    } else if (phot2_hit && !fDetector) {
+        G4cout << "WARNING: phot2 hit but DetectorConstruction not available" << G4endl;
         auto p2 = B5HadCalorimeterSD::Phot2Pos();
         phot2_hitx = p2.x() / CLHEP::cm;
         phot2_hity = p2.y() / CLHEP::cm;

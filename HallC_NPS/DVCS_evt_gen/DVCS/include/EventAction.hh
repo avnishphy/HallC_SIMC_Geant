@@ -156,11 +156,12 @@
 
 class RunAction;
 class HistoManager;
+class DetectorConstruction;
 
 class EventAction : public G4UserEventAction
 {
 public:
-    EventAction(RunAction*, HistoManager*);
+    EventAction(RunAction*, HistoManager*, const DetectorConstruction*);
     virtual ~EventAction();
 
     virtual void  BeginOfEventAction(const G4Event*);
@@ -189,6 +190,7 @@ public:
 private:
     RunAction*    fRunAct;
     HistoManager* fHistoManager;
+    const DetectorConstruction* fDetector;
 
     G4int fEvtNb;
 

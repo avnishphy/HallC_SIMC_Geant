@@ -8,7 +8,8 @@ The framework provides:
 * Full electromagnetic shower simulation in the NPS calorimeter
 * Cluster reconstruction and trigger response using NPS_SOFT
 * Event-by-event truth association of primary photons with deposited energy
-* Automatic kinematic configuration via the Hall C KinC list
+* User-selectable kinematic configuration from the shared simulation CSV
+  (default) or legacy Hall C `KinC_list.txt`
 
 This work builds upon the earlier simulation framework by Hao Huang:
 [https://github.com/hhuang-hep/NPS2023_Simulation](https://github.com/hhuang-hep/NPS2023_Simulation)
@@ -45,7 +46,7 @@ This builds the calorimeter clustering, trigger, and reconstruction libraries.
 cd HallC_NPS/DVCS_evt_gen/DVCS
 mkdir -p build
 cd build
-cmake -DNPS_SOFT_ROOT=../../../NPS_SOFT ..
+cmake -DNPS_SOFT_ROOT=../../../../NPS_SOFT ..
 make
 ```
 
@@ -73,7 +74,9 @@ Then run Geant4 from:
 
 ```bash
 cd HallC_NPS/DVCS_evt_gen/DVCS/build
-./DVCS <simc.root> [tree] [nEvents] [out.root] [--batch] [--vis|--vis-single|--vis-seq]
+./DVCS <simc.root> [tree] [nEvents] [out.root] [--batch] \
+  [--vis|--vis-single|--vis-seq] \
+  [--config-source csv|kinc] [--config-file PATH] [--run RUN]
 ```
 
 Arguments:
@@ -86,36 +89,52 @@ Arguments:
 * `--vis`         : Start visualization UI and prepare the scene (manual stepping)
 * `--vis-single`  : Start visualization UI and auto-run one event
 * `--vis-seq`     : Start visualization UI in sequential stepping mode
+* `--config-source` : Select `csv` or legacy `kinc`; omitted means prompt
+* `--config-file` : Override the selected source path
+* `--run`         : Select the run without the run-number prompt
 
 ---
 
-## 4. KinC List and Run Selection
+## 4. Kinematic Configuration and Run Selection
 
-At startup, the program reads the Hall C kinematic list:
+At startup, the program asks which configuration to use:
 
-```
-../../../../KinC_list.txt
-```
-
-It prints a concise table:
-
-```
-Run   | Kinematics
-----------------------------
-3241  | Ebeam=10.6 GeV, Q2=2.5, xB=0.36, ...
-3242  | Ebeam=10.6 GeV, Q2=3.0, xB=0.42, ...
-...
+```text
+Select kinematic configuration source:
+  1. nps_simulation_kinematics.csv [default]
+  2. KinC_list.txt (legacy)
+Selection [1]:
 ```
 
-You are prompted to enter a run number. The corresponding configuration is automatically applied to:
+The shared CSV is authoritative for current simulation production:
 
-* Beam energy
-* HMS angle and momentum
-* Calorimeter distance and orientation
-* Target properties
-* Magnetic field settings
+```text
+../nps_analysis/pi0_analysis/root_analysis_env_main/config/nps_simulation_kinematics.csv
+```
 
-This ensures full consistency between SIMC generation and Geant4 geometry.
+Override this location when needed:
+
+```bash
+export NPS_SIMULATION_KINEMATICS_CSV=/path/to/nps_simulation_kinematics.csv
+# or
+./DVCS input.root h10 100 output.root --batch \
+  --config-source csv --config-file /path/to/file.csv --run 2976
+```
+
+CSV selection uses exact `source_run`. Applied fields are `ebeam_gev`,
+`hms_p_gev`, `hms_theta_deg`, `nps_theta_deg`,
+`nps_target_distance_cm`, and `target`. Current CSV rows use `LH2`.
+
+Legacy `KinC_list.txt` remains supported. Its match is inclusive:
+`begin_run <= selected_run <= end_run`. The exact selected run—not interval
+start—is passed to `NPS_SOFT` for run-dependent database lookup.
+
+Neither source currently controls target length, target offsets, sweeping-field
+enable/strength, detector dimensions, trigger threshold, clustering window, or
+energy scale. Those remain code/runtime settings. The program prints selected
+values before Geant4 initialization; verify they match the SIMC infile.
+
+For prompt-free local execution, provide both `--config-source` and `--run`.
 
 ---
 
@@ -129,7 +148,7 @@ The output ROOT file contains all original SIMC branches plus Geant4 truth and r
    Event number
 
 2. `edep[1080]`
-   Energy deposited per calorimeter block (MeV, after 4% compensation)
+   Corrected energy per calorimeter block in MeV: raw Geant4 deposit × `1.04`
 
 ### Primary photon truth
 
@@ -143,7 +162,8 @@ The output ROOT file contains all original SIMC branches plus Geant4 truth and r
    True impact point on calorimeter front face (Geant4)
 
 6. `phot1_Ecal`
-   Total energy deposited by the primary photon shower and all secondaries (GeV)
+   Raw Geant4 energy deposited by the primary photon shower and descendants
+   (GeV); the `1.04` scale is not applied
 
 7. `phot1_clustSize`
    Size of the reconstructed cluster associated with this photon
@@ -154,7 +174,8 @@ The output ROOT file contains all original SIMC branches plus Geant4 truth and r
    Number of reconstructed clusters
 
 9. `clust_E[]`
-   Cluster energies (GeV)
+   Cluster energies (GeV), reconstructed from block energies after the `1.04`
+   scale
 
 10. `clust_X[], clust_Y[]`
     Cluster positions on calorimeter face (cm)
@@ -168,6 +189,16 @@ The output ROOT file contains all original SIMC branches plus Geant4 truth and r
 * `clust_E[i]` is reconstructed cluster energy using calorimeter blocks and trigger logic, with no knowledge of particle ancestry.
   Differences arise due to overlaps, pileup, leakage, and secondary contamination.
 
+### 4% calorimeter energy scale
+
+`EventAction` defines one named scale, `kCaloEnergyScale = 1.04`. It is applied
+to each raw crystal deposit before filling `edep[1080]` and before passing block
+energies to `TCaloEvent`. Therefore `clust_E[]` and `TriggerSim(0.5 GeV)` use
+corrected energies. The 0.5 GeV corrected trigger threshold corresponds to
+approximately 0.4808 GeV raw deposit. Original SIMC photon branches and
+`phot1_Ecal`/`phot2_Ecal` remain unscaled. This is retained historical NPS
+reconstruction compensation; no derivation is stored in this repository.
+
 ---
 
 ## 6. Coordinate System
@@ -179,6 +210,27 @@ The simulation uses the standard Geant4 right-handed coordinate system:
 * y: upward
 
 Care must be taken when comparing with Hall C data coordinate conventions.
+
+NPS contains 30 rows × 36 columns. `DetectorConstruction` is authoritative for
+crystal pitch:
+
+```text
+pitch = crystal + 2*wrapper + gap
+      = 20.5 mm + 2*0.095 mm + 1.0 mm
+      = 21.69 mm
+```
+
+The same runtime pitch now defines `phot{1,2}_hit_x/y`. For row `r`, column `c`,
+and crystal-local hit `(localX, localY)`:
+
+```text
+hitX = (14.5 - r) * pitchX + localX
+hitY = (c - 17.5) * pitchY + localY
+```
+
+Coordinates are written in cm. Changing crystal size, wrapper thickness, or gap
+in `DetectorConstruction` automatically changes both placement and truth-hit
+coordinates; no independent pitch constant exists in `EventAction`.
 
 ---
 
@@ -250,7 +302,7 @@ module load geant4/11.2.1
 module load root/6.30.04
 
 cd HallC_NPS/DVCS_evt_gen/DVCS/build
-cmake -DNPS_SOFT_ROOT=../../../NPS_SOFT ..
+cmake -DNPS_SOFT_ROOT=../../../../NPS_SOFT ..
 cmake --build . -j 8
 ```
 
@@ -319,7 +371,75 @@ After rebuilding:
 
 ---
 
-## 11. Contact
+## 11. SWIF2 Batch Submission
+
+`submit_geant4_swif2.sh` creates one independent job per selected SIMC ROOT
+file. It supports all 33 CSV kinematics, any single legacy token such as
+`x36_2p`, all three channels, or one channel.
+
+```bash
+# All 33 kinematics × all 3 channels = 99 jobs
+./submit_geant4_swif2.sh
+
+# One kinematic, all channels = 3 jobs
+./submit_geant4_swif2.sh --kin x36_2p
+
+# All kinematics, exclusive only = 33 jobs
+./submit_geant4_swif2.sh --channel excl
+
+# One exact input/job
+./submit_geant4_swif2.sh --kin x36_2p --channel delta
+```
+
+Default inputs:
+
+```text
+/w/hallc-scshelf2102/nps/singhav/nps_analysis/pi0_analysis/
+  root_analysis_env_main/output/simc/nps_simc_20260824_135058/
+  worksim/simc_gfortran_updated/worksim/nps_<channel>_pi0_<kin>.root
+```
+
+Override this production directory with `--input-dir DIR` when using a newer
+SIMC workflow.
+
+Kinematic-to-run mapping comes from `nps_simulation_kinematics.csv`; each job
+passes the row's exact `source_run` to DVCS. Missing expected inputs abort before
+workflow creation, so an `all` request cannot silently submit a partial set.
+
+The submit host performs a fresh Release build in `/tmp`, then packages only the
+DVCS executable, NPS_SOFT shared libraries/ROOT dictionaries/initdata, exact CSV
+snapshot, and build provenance. It validates gzip integrity, required archive
+members, and shared-library resolution. Workers unpack this tar and do not
+compile.
+
+Defaults:
+
+* Runtime tar: `/group/nps/$USER/swif_inputs/<workflow>_geant4_runtime.tar.gz`
+* ROOT output: `/volatile/hallc/nps/$USER/geant4_simc/<workflow>/<channel>/nps_<channel>_pi0_<kin>_geant4.root`
+* Logs: `/farm_out/$USER/geant4_simc/<workflow>/`
+* Resources: one core, 4 GB RAM, 12 GB scratch, 24 hours
+
+The 12 GB scratch request covers staged SIMC input plus potentially large
+`edep[1080]` output for up to one million events; override with `--disk` after
+measuring smaller production outputs.
+
+Each ROOT output has an exact SWIF output mapping—no wildcard and no output tar.
+Worker validation requires a nonempty ROOT file containing tree `nerd`.
+
+Useful overrides:
+
+```bash
+./submit_geant4_swif2.sh --workflow test_x36_2p \
+  --kin x36_2p --channel all --events 1000 \
+  --output-dir /volatile/hallc/nps/$USER/geant4_simc/test_x36_2p
+
+# Build runtime, verify all requested inputs, and count jobs without SWIF changes
+./submit_geant4_swif2.sh --dry-run
+```
+
+See `./submit_geant4_swif2.sh --help` for path, tree, tar, and resource options.
+
+## 12. Contact
 
 **Avnish Singh**
 The Catholic University of America
