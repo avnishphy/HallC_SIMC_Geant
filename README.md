@@ -447,3 +447,14 @@ Jefferson Lab Hall C / NPS
 
 [singhav@cua.edu](mailto:singhav@cua.edu)
 [singhav@jlab.org](mailto:singhav@jlab.org)
+
+
+### Sweeping-magnet shadow with the field off
+
+Append `--sweeper-material 4` to a DVCS invocation to transport through the
+installed sweep magnet at a +4 degree angle relative to the NPS arm. The
+placement follows the configured NPS angle. This option models passive material
+with the existing field-off SIMC workflow. Select the relative angle for the
+hardware setting being studied. Omit the option to reproduce the previous
+field-off geometry. An explicit angle of zero places the magnet aligned with
+the arm. Check the startup summary for material placement, field and angle.

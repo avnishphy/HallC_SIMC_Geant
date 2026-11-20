@@ -5,6 +5,8 @@
 #include <vector>
 #include <iomanip> // for setw
 #include <cstdlib>
+#include <cmath>
+#include <optional>
 
 // ROOT
 #include "TFile.h"
@@ -77,7 +79,7 @@ void print_usage(const char* prog)
         << "  " << prog
         << " <simc.root> [tree] [nEvents] [out.root] "
         << "[--batch] [--vis|--vis-single|--vis-seq] "
-        << "[--config-source csv|kinc] [--config-file PATH] [--run RUN]\n"
+        << "[--config-source csv|kinc] [--config-file PATH] [--run RUN] [--sweeper-material DEG]\n"
         << "\n"
         << "Visualization options:\n"
         << "  --vis         : open UI with detector view, event stepping manual via /run/beamOn 1\n"
@@ -85,6 +87,7 @@ void print_usage(const char* prog)
         << "  --vis-seq     : open UI in sequential stepping mode (one event at a time)\n"
         << "  --config-source: choose shared CSV or legacy KinC list (prompted if omitted)\n"
         << "  --config-file : override selected configuration path\n"
+        << "  --sweeper-material DEG : place sweep magnet at this angle relative to the NPS arm (degrees)\n"
         << "  --run         : select run without the run-number prompt\n";
 }
 
@@ -134,6 +137,7 @@ int main(int argc, char** argv)
     std::string configSource;
     std::string configFile;
     int         runNumber = -1;
+    std::optional<double> sweeperAngleDeg;
 
     // ---------------- Argument parsing ----------------
     if (argc < 2) {
@@ -178,6 +182,16 @@ int main(int argc, char** argv)
                         return 1;
                     }
                 }
+                continue;
+            }
+            if (a == "--sweeper-material") {
+                double angle;
+                std::istringstream value(i + 1 < argc ? argv[++i] : "");
+                if (!(value >> angle) || !value.eof() || !std::isfinite(angle)) {
+                    std::cerr << "ERROR: --sweeper-material requires a finite angle in degrees.\n";
+                    return 1;
+                }
+                sweeperAngleDeg = angle;
                 continue;
             }
             if (a == "--batch") {
@@ -299,8 +313,8 @@ int main(int argc, char** argv)
         return 5;
     }
 
-    // Sweeping magnet remains disabled in this workflow; config files do not
-    // currently control field maps or strength.
+    // Material placement and field strength are independent.
+    if (sweeperAngleDeg) dvcsGlobals::SM_angle = *sweeperAngleDeg * CLHEP::degree;
     dvcsGlobals::SM_field_flag = false;
     dvcsGlobals::SM_field_str  = 1.;
 
@@ -345,6 +359,7 @@ int main(int argc, char** argv)
     std::cout << "hit_HMS_CALO_flag    : " << dvcsGlobals::hit_HMS_CALO_flag << "\n";
     std::cout << "SM_field_flag        : " << dvcsGlobals::SM_field_flag << "\n";
     std::cout << "SM_field_str         : " << dvcsGlobals::SM_field_str << "\n";
+    std::cout << "SM_material_placed   : " << (sweeperAngleDeg.has_value() || dvcsGlobals::SM_field_flag) << "\n";
     std::cout << "SM_angle             : " << dvcsGlobals::SM_angle << "\n";
     std::cout << "=======================\n\n";
 
@@ -359,7 +374,8 @@ int main(int argc, char** argv)
         dvcsGlobals::Calo_distance,
         dvcsGlobals::Calo_angle,
         dvcsGlobals::SM_field_flag,
-        dvcsGlobals::SM_field_str
+        dvcsGlobals::SM_field_str,
+        sweeperAngleDeg.has_value()
     );
     runManager->SetUserInitialization(detector);
 
