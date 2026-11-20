@@ -64,6 +64,7 @@
 
 #include "G4Trd.hh"
 #include "G4GenericTrap.hh"
+#include "G4DisplacedSolid.hh"
 
 #include "G4UnionSolid.hh"
 #include "G4UserLimits.hh"
@@ -102,7 +103,7 @@
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-DetectorConstruction::DetectorConstruction(G4double NPS_distance, G4double NPS_angle, G4bool field_input, G4double field_str)
+DetectorConstruction::DetectorConstruction(G4double NPS_distance, G4double NPS_angle, G4bool field_input, G4double field_str, G4bool placeSweeperMaterial)
 :G4VUserDetectorConstruction(),
  fVacuumMater(0), fChamberMater(0), fWindowMater(0), fKaptonMater(0), lWorld(0),
  fLogicChamber(0), fLogicInnerChamber(0),
@@ -141,6 +142,7 @@ DetectorConstruction::DetectorConstruction(G4double NPS_distance, G4double NPS_a
   fStepper(0),
   fChordFinder(0),
   field(field_input),
+  fPlaceSweeperMaterial(placeSweeperMaterial),
   fWorldMater(0), fPhysiWorld(0),
   fDetectorMessenger(0)
 {
@@ -1786,17 +1788,14 @@ G4VPhysicalVolume* DetectorConstruction::ConstructVolumes()
   G4Box*
     sSweepingMagnetic_to_be_sub = new G4Box("SweepingMagnetic_to_be_sub_sol", 0.5*fSweepingMagnet_X, 0.5*fSweepingMagnet_Y, 0.5*fSweepingMagnet_Z);
 
-  vector<G4TwoVector> vertices_beampipe1_sub;
-  vertices_beampipe1_sub.push_back(G4TwoVector( 0., -25.265/(TMath::Sqrt(2))*mm ));
-  vertices_beampipe1_sub.push_back(G4TwoVector( -25.265/(TMath::Sqrt(2))*mm, 0. ));
-  vertices_beampipe1_sub.push_back(G4TwoVector( 0.,  25.265/(TMath::Sqrt(2))*mm ));
-  vertices_beampipe1_sub.push_back(G4TwoVector(  25.265/(TMath::Sqrt(2))*mm, 0. ));
-  vertices_beampipe1_sub.push_back(G4TwoVector( 0., -69.749/(TMath::Sqrt(2))*mm ));
-  vertices_beampipe1_sub.push_back(G4TwoVector( -69.749/(TMath::Sqrt(2))*mm, 0. ));
-  vertices_beampipe1_sub.push_back(G4TwoVector( 0.,  69.749/(TMath::Sqrt(2))*mm ));
-  vertices_beampipe1_sub.push_back(G4TwoVector(  69.749/(TMath::Sqrt(2))*mm, 0. ));
-
-  G4GenericTrap* sBeampipe1_sub = new G4GenericTrap("Beampipe1_sub_sol", 0.5*fBeampipe1Length, vertices_beampipe1_sub);
+  // The diamond cutout is a square frustum rotated about its longitudinal axis.
+  // Analytical faces avoid zero steps for tracks grazing a GenericTrap face.
+  G4RotationMatrix cutoutRotation;
+  cutoutRotation.rotateZ(45.*degree);
+  auto* sBeampipe1_sub = new G4DisplacedSolid("Beampipe1_sub_sol",
+      new G4Trd("Beampipe1_sub_square_sol", 0.5*25.265*mm, 0.5*69.749*mm,
+                0.5*25.265*mm, 0.5*69.749*mm, 0.5*fBeampipe1Length),
+      G4Transform3D(cutoutRotation, G4ThreeVector()));
 
   G4double x_global = 0. - fSweepingMagnet_pos*sin(-fSweepingMagnet_arm_theta);//distance x between beam-pipe 1 and SM in global coordinate
   G4double z_global = (fChamberOuterRadius + fWindowFrameThickness + fWindowOuterJoint2Thickness - fWindowOuterJoint2_1Position + fWindowOuterJoint2_2dz + 0.5*fBeampipe1Length) - fSweepingMagnet_pos*cos(-fSweepingMagnet_arm_theta);//distance z between beam-pipe 1 and SM in global coordinate
@@ -1813,9 +1812,7 @@ G4VPhysicalVolume* DetectorConstruction::ConstructVolumes()
   G4RotationMatrix *ySweepingMagnetRot = new G4RotationMatrix;  // Rotates X and Z axes only
   ySweepingMagnetRot->rotateY(fSweepingMagnet_theta); //Angle in radian                     
 
-  //Put sweeping magnet ONLY when magnetic field is ON. When OFF there is no physical sweeping magent.
-  //20250415 by Hao: comment out the if argument to put sweeping magnet even when magnetic field is OFF to simulate the shadow of the magnet on the calorimeter
-  if(field){
+  if (field || fPlaceSweeperMaterial) {
     new G4PVPlacement(ySweepingMagnetRot,
 		      G4ThreeVector(fSweepingMagnet_pos*sin(-fSweepingMagnet_arm_theta), fSweepingMagnetSTPcenter_Y, fSweepingMagnet_pos*cos(-fSweepingMagnet_arm_theta)),
 		      fLogicMagnetic,
@@ -2057,20 +2054,9 @@ G4VPhysicalVolume* DetectorConstruction::ConstructVolumes()
 		    0,
 		    fCheckOverlaps);
 
-  vector<G4TwoVector> vertices_3_2;//must be clockwise ordered
-  vertices_3_2.push_back(G4TwoVector( (0.5*12.125 - 12.125)*inch, -0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector( (0.5*12.125 - 12.125)*inch, 0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector( 0.5*12.125*inch,  0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector( 0.5*12.125*inch, -0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector(-0.5*12.125*inch, -0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector(-0.5*12.125*inch,  0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector( 0.5*12.125*inch,  0.5*1*inch));
-  vertices_3_2.push_back(G4TwoVector( 0.5*12.125*inch, -0.5*1*inch));
-
-  G4GenericTrap*
-    sSweepingMagnet_3_2 = new G4GenericTrap("SweepingMagnet_3_2_sol", 
-					    0.5*28*inch,//dz
-					    vertices_3_2);
+  // Both end faces of this steel plate are identical, axis-aligned rectangles.
+  auto* sSweepingMagnet_3_2 = new G4Box("SweepingMagnet_3_2_sol",
+      0.5*12.125*inch, 0.5*inch, 0.5*28*inch);
 
   fLogicSweepingMagnet_3_2 = new G4LogicalVolume(sSweepingMagnet_3_2,
 						 fSweepingMagnet_3Mater,

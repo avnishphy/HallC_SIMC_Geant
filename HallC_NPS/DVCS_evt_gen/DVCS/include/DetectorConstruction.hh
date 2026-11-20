@@ -58,7 +58,7 @@ class G4ChordFinder;
 class DetectorConstruction : public G4VUserDetectorConstruction
 {
 public:
-  DetectorConstruction(G4double, G4double, G4bool, G4double);
+  DetectorConstruction(G4double, G4double, G4bool, G4double, G4bool placeSweeperMaterial = false);
   ~DetectorConstruction();
 
 public:
@@ -259,6 +259,7 @@ private:
   G4ChordFinder*          fChordFinder;
 
   G4bool             field;
+  const G4bool       fPlaceSweeperMaterial;
 
   G4double      fFieldStr;
 
